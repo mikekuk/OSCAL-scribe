@@ -359,7 +359,8 @@ function bind() {
   if (search)
     search.oninput = () => {
       for (const o of select!.options)
-        o.hidden = !o.text.toLowerCase().includes(search.value.toLowerCase());
+        // Keep the displayed selection consistent with the implementation being edited.
+        o.hidden = !o.selected && !o.text.toLowerCase().includes(search.value.toLowerCase());
     };
   const role = document.querySelector<HTMLSelectElement>("#req-role");
   if (role)
