@@ -1,5 +1,7 @@
 # Threat model and release gates
 
+For operator steps, see [identity and permissions](permissions.md) and the [deployment, shutdown and rebuild runbook](deployment.md).
+
 Trust boundaries: browser -> Entra -> verified Function API -> Cosmos; separately, approved Git content -> publication job -> read-only application content. No browser data is identity evidence. System roles and app authorization roles are independent. API JWT verification remains mandatory even if SWA backend linking restricts direct API traffic.
 
 Threats and controls:
