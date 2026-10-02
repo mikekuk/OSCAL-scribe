@@ -29,8 +29,9 @@ variable "budget_email" {
   default = ""
 }
 variable "monthly_budget" {
-  type    = number
-  default = 50
+  description = "Monthly alert budget in the subscription billing currency, not necessarily USD."
+  type        = number
+  default     = 50
 }
 variable "budget_start" {
   type    = string

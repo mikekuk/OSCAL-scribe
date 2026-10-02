@@ -1,7 +1,15 @@
 const base = process.env.SCRIBE_URL;
 if (!base) throw Error("Set SCRIBE_URL");
-const home = await fetch(base);
-if (!home.ok) throw Error("Web app unavailable");
+if (process.env.API_ONLY !== "true") {
+  const home = await fetch(base);
+  if (!home.ok || !(await home.text()).includes("<title>OSCAL Scribe</title>"))
+    throw Error("OSCAL Scribe web build unavailable");
+  const config = await fetch(base + "/config.json");
+  if (!config.ok) throw Error("Web sign-in configuration unavailable");
+  const settings = await config.json();
+  if (!settings.tenantId || !settings.clientId)
+    throw Error("Web sign-in configuration incomplete");
+}
 const api = await fetch(base + "/api/ssps");
 if (![401, 403].includes(api.status))
   throw Error("Anonymous API was not denied: " + api.status);
@@ -21,6 +29,4 @@ if (process.env.SCRIBE_TOKEN) {
   if (!r.ok) throw Error("Authenticated content unavailable " + r.status);
   console.log("Authenticated content check passed");
 }
-console.log(
-  "Web reachability, anonymous denial and forged-header denial passed",
-);
+console.log("Deployment reachability, anonymous denial and forged-header denial passed");

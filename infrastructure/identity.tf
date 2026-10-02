@@ -1,4 +1,6 @@
 resource "azuread_application" "scribe" {
+  # The URI has a separate resource because it depends on the generated client ID.
+  lifecycle { ignore_changes = [identifier_uris] }
   display_name     = "${local.name} test"
   sign_in_audience = "AzureADMyOrg"
   owners           = [data.azurerm_client_config.current.object_id]

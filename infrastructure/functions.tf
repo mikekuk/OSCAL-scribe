@@ -21,9 +21,9 @@ resource "azurerm_linux_function_app" "api" {
   service_plan_id               = azurerm_service_plan.api.id
   storage_account_name          = azurerm_storage_account.functions.name
   storage_uses_managed_identity = true
-  content_share_force_disabled  = true
-  https_only                    = true
-  functions_extension_version   = "~4"
+  # Managed-identity storage uses accountName settings and does not create an Azure Files share.
+  https_only                  = true
+  functions_extension_version = "~4"
   identity { type = "SystemAssigned" }
   site_config {
     application_stack { node_version = "22" }

@@ -1,6 +1,6 @@
 # Personal Azure test-bed deployment
 
-Personal test bed: choose the authorized subscription in your ignored tfvars file; US West preferred, USD 50/month target. Default region is West US 2. Static Web Apps Standard is required for linking an independently managed Function App. Functions uses Consumption with scale limit 2; Cosmos is single-region serverless; telemetry is sampled and capped at 0.1 GB/day. A resource-group budget tracks 50/month and sends 50/80/100% notifications when `budget_email` is supplied. Budgets alert; they do not impose a hard spending cap. Verify the subscription billing currency and current Azure retail rates before applying. Heavy traffic can exceed the target.
+Personal test bed: choose the authorized subscription in your ignored tfvars file; US West preferred, USD 50/month target. Default region is West US 2. Static Web Apps Standard is required for linking an independently managed Function App. Functions uses Consumption with scale limit 2; Cosmos is single-region serverless; telemetry is sampled and capped at 0.1 GB/day. A resource-group budget tracks the configured amount in the subscription billing currency and sends 50/80/100% notifications when `budget_email` is supplied. Budgets alert; they do not impose a hard spending cap. Verify the subscription billing currency and current Azure retail rates before applying. Heavy traffic can exceed the target. The personal test subscription bills in GBP; its private configuration uses a conservative GBP 35/month alert budget (rather than treating 50 as USD). Exchange rates and taxes can change; this remains an alert, not a hard cap.
 
 ## Prerequisites and first deployment
 
@@ -14,7 +14,7 @@ Personal test bed: choose the authorized subscription in your ignored tfvars fil
 
 ## Acceptance checks
 
-Run `SCRIBE_URL=<web_url> node scripts/smoke.mjs`. Repeat with the direct Function URL to prove browser-controlled identity headers are not trusted (platform denial or API 401/403 is acceptable). Then perform real-tenant acceptance:
+Run `SCRIBE_URL=<web_url> node scripts/smoke.mjs`. Repeat with `API_ONLY=true SCRIBE_URL=<function_url> node scripts/smoke.mjs` to prove browser-controlled identity headers are not trusted (platform denial or API 401/403 is acceptable). The web check verifies the Scribe build and public sign-in configuration, so an Azure holding page cannot count as a successful deployment. Then perform real-tenant acceptance:
 
 - User A creates Low and Moderate SSPs; roles, SOC and control/statement/ODP edits save and reopen.
 - User B cannot read, edit, archive, share, attest or fetch revisions of A's private SSP, even knowing its UUID.

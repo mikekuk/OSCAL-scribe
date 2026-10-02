@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 const run = (cmd, args, options = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", ...options });
@@ -7,12 +7,14 @@ const output = JSON.parse(
     run("terraform", ["-chdir=infrastructure", "output", "-json"]),
   ),
   v = (k) => output[k].value;
+console.log("Building the application");
 run("npm", ["run", "build"], { stdio: "inherit" });
 writeFileSync(
   "dist/web/config.json",
   JSON.stringify({ tenantId: v("tenant_id"), clientId: v("client_id") }),
 );
 // Runtime dependencies are installed from the committed lockfile, then development packages pruned.
+rmSync("work/api-package", { recursive: true, force: true });
 mkdirSync("work/api-package", { recursive: true });
 run("cp", ["dist/api/functions.js", "dist/api/host.json", "work/api-package/"]);
 run("cp", ["package.json", "package-lock.json", "work/api-package/"]);
@@ -23,6 +25,7 @@ run("npm", ["ci", "--omit=dev", "--ignore-scripts"], {
   cwd: "work/api-package",
   stdio: "inherit",
 });
+rmSync("work/api.zip", { force: true });
 run("zip", ["-qr", "../api.zip", "."], { cwd: "work/api-package" });
 const name =
   createHash("sha256").update(readFileSync("work/api.zip")).digest("hex") +
@@ -59,6 +62,7 @@ run("az", [
   "--output",
   "none",
 ]);
+console.log("Package uploaded; configuring managed-identity runtime");
 const packageUrl = `https://${v("storage_account")}.blob.core.windows.net/packages/${name}`;
 run("az", [
   "functionapp",
@@ -70,7 +74,7 @@ run("az", [
   "--name",
   v("function_name"),
   "--settings",
-  "WEBSITE_RUN_FROM_PACKAGE=" + packageUrl,
+  JSON.stringify({ WEBSITE_RUN_FROM_PACKAGE: packageUrl }),
   "--output",
   "none",
 ]);
@@ -82,6 +86,7 @@ run("az", [
   "--name",
   v("function_name"),
 ]);
+console.log("Deploying the static web app");
 // Deployment token is kept in child process environment, never printed or written to source.
 const token = JSON.parse(
   run("az", [
@@ -111,6 +116,10 @@ run(
     env: { ...process.env, SWA_CLI_DEPLOYMENT_TOKEN: token },
   },
 );
+run("node", ["scripts/smoke.mjs"], {
+  stdio: "inherit",
+  env: { ...process.env, SCRIBE_URL: v("web_url") },
+});
 console.log(
   "Deployed " +
     v("web_url") +
