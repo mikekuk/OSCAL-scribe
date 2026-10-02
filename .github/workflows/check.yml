@@ -1,0 +1,30 @@
+name: Build and security checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.7
+      - run: npm ci
+      - run: bash scripts/install-oscal-cli.sh
+      - run: npm run demo:prepare
+      - run: npm run content:build
+        env:
+          OSCAL_CLI: ${{ github.workspace }}/work/oscal-cli/bin/oscal-cli
+      - run: npm run check
+      - run: terraform -chdir=infrastructure fmt -check
+      - run: terraform -chdir=infrastructure init -backend=false
+      - run: terraform -chdir=infrastructure validate

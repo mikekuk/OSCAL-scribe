@@ -1,0 +1,3 @@
+# Preserve upstream schema bytes/checksums, including their original whitespace.
+src/shared/schemas/** -whitespace
+tests/lens/schemas/** -whitespace

@@ -1,0 +1,7 @@
+# Source provenance
+
+- OSCAL Lens: https://github.com/mikekuk/oscal-lens at f4156824e76a776c1f9bb684a103f0ec78fd0e5f. Owner-authorized reuse for OSCAL Scribe. Seven .mjs modules in src/shared/lens are copied unchanged; no changes were made to the Lens repository. Adapted test import paths are the only changes to the inherited tests. Future updates should diff against this pinned commit and run regressions; a shared package can replace the vendored directory later.
+- Official OSCAL JSON schemas: https://github.com/usnistgov/OSCAL/releases/download/v1.2.2/ (catalog, profile, component, ssp, mapping) and v1.1.3 (catalog/profile). Kept unmodified. The legacy Lens test fixtures include official 1.0.4 schemas. See schemas/provenance.json for SHA-256 digests.
+- NIST SP800-53 content: https://github.com/usnistgov/oscal-content at 78650f02ad9321bb7b817846f8fbd4f2bcd620de. Downloaded only by the explicit demo importer. NIST content is not an endorsement of this application.
+- OSCAL CLI enhanced 3.2.0: https://github.com/metaschema-framework/oscal-cli, downloaded from Maven Central; SHA256 e001b353ee245da6f4ff0ad930c4dfaa88083c63243ca004bd5f5bcef44e8ec8. Its distribution includes upstream and third-party license notices. Java runtime is not deployed in the application; resolution happens in publication.
+- NPM packages and transitive licenses are recorded in package-lock.json and installed package distributions. Lens uses the locked Ajv dependency in tests; its standalone browser Ajv bundle is not copied.

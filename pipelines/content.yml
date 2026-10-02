@@ -1,0 +1,36 @@
+trigger: none
+parameters:
+- name: serviceConnection
+  type: string
+- name: contentRepository
+  type: string
+  default: ControlledOSCAL
+resources:
+  repositories:
+  - repository: controlled
+    type: git
+    name: ${{ parameters.contentRepository }}
+pool: { vmImage: ubuntu-latest }
+steps:
+- checkout: self
+  path: s/scribe
+- checkout: controlled
+  path: s/controlled
+- task: NodeTool@0
+  inputs: { versionSpec: '22.x' }
+- script: |
+    set -euo pipefail
+    npm ci
+    bash scripts/install-oscal-cli.sh
+    OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- ../controlled
+  workingDirectory: $(Pipeline.Workspace)/s/scribe
+  displayName: Validate and resolve controlled content
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    workingDirectory: $(Pipeline.Workspace)/s/scribe
+    inlineScript: npm run content:publish
+  env:
+    COSMOS_ENDPOINT: $(cosmosEndpoint)

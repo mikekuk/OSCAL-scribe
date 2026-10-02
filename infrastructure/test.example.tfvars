@@ -1,0 +1,9 @@
+subscription_id     = "REPLACE-WITH-PERSONAL-SUBSCRIPTION-ID"
+tenant_id           = "REPLACE-WITH-PERSONAL-TENANT-ID"
+publisher_object_id = "REPLACE-WITH-SIGNED-IN-OBJECT-ID"
+security_user_ids   = ["REPLACE-WITH-SIGNED-IN-OBJECT-ID"]
+user_ids            = []
+location            = "westus2"
+web_location        = "westus2"
+monthly_budget      = 50
+budget_email        = ""

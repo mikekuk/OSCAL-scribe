@@ -1,0 +1,12 @@
+node_modules/
+dist/
+work/
+.env
+*.tfstate*
+*.tfplan
+.terraform/
+*.tfvars
+!*.example.tfvars
+local.settings.json
+
+src/shared/generated-ssp.mjs
