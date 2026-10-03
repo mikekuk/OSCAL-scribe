@@ -136,6 +136,8 @@ Controlled content uses a separate Azure Repos repository with the manifest/sour
 
 ## Stop, restart, delete and rebuild from the browser
 
+For a maintenance pause or retirement, first disable new run requests on **Scribe – Build and deploy** and let any active deployment finish. Otherwise a later merge can deploy again. Re-enable it when you want automatic updates to resume.
+
 Run **Scribe – Operations** with the desired action:
 
 - **stop**: stops the Function App. Data stays; the frontend may still load. Other resources continue to incur charges.

@@ -25,6 +25,7 @@ jobs:
         env:
           OSCAL_CLI: ${{ github.workspace }}/work/oscal-cli/bin/oscal-cli
       - run: npm run check
+      - run: node scripts/ci/package.mjs
       - run: terraform -chdir=infrastructure fmt -check
       - run: terraform -chdir=infrastructure init -backend=false -lockfile=readonly
       - run: terraform -chdir=infrastructure validate
