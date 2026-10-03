@@ -169,7 +169,10 @@ export function integrity(
   }
   return errors;
 }
-export function reviewStatus(s: Ssp, now = new Date()): string {
+export function reviewStatus(
+  s: Pick<Ssp, "currentRevision" | "lastAttestation">,
+  now = new Date(),
+): string {
   const a = s.lastAttestation;
   if (!a) return "Never attested";
   if (s.currentRevision !== a.revision) return "Changed since attestation";

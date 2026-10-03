@@ -1,7 +1,7 @@
 // Used only by automated tests and the explicit loopback demo server.
 import type { Repository, Ssp, User, Json } from "../shared/types";
 import { canRead } from "./authz";
-import { ApiError } from "./service";
+import { ApiError } from "./errors";
 export class MemoryRepository implements Repository {
   current = new Map<string, Ssp>();
   history = new Map<string, Json[]>();
@@ -30,3 +30,4 @@ export class MemoryRepository implements Repository {
     );
   }
 }
+

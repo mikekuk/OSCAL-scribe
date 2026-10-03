@@ -1,6 +1,7 @@
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticator } from "./auth";
-import { Service, ApiError } from "./service";
+import { Service } from "./service";
+import { ApiError } from "./errors";
 import { cosmos, CosmosRepository, CosmosContent } from "./cosmos";
 const client = cosmos(),
   db = client.database(process.env.COSMOS_DATABASE || "scribe");
@@ -79,3 +80,4 @@ app.http("api", {
     }
   },
 });
+

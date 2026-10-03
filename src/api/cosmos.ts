@@ -13,7 +13,8 @@ import type {
   Release,
 } from "../shared/types";
 import { security } from "./authz";
-import { ApiError, hash } from "./service";
+import { ApiError } from "./errors";
+import { hash } from "./digest";
 export const cosmos = () =>
   new CosmosClient({
     endpoint: process.env.COSMOS_ENDPOINT!,
@@ -137,3 +138,4 @@ export class CosmosContent implements ContentStore {
     return release;
   }
 }
+

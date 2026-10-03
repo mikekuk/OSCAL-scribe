@@ -67,3 +67,20 @@ export interface Repository {
   commit(previous: Ssp, next: Ssp, records: Json[]): Promise<void>;
   records(id: string, prefix: string): Promise<Json[]>;
 }
+
+/** Content returned when a plan opens, pinned to its approved release. */
+export interface PinnedBaseline {
+  releaseId: string;
+  profile: Release["profiles"][number];
+  components: Release["components"];
+  sources: Release["sources"];
+}
+
+export type ContentSummary = Pick<Release, "id" | "demo" | "components"> & {
+  profiles: Pick<Release["profiles"][number], "id" | "title">[];
+};
+
+export type SspSummary = Omit<Ssp, "oscal"> & {
+  title: string;
+  systemName: string;
+};

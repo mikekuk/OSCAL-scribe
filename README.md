@@ -37,6 +37,7 @@ Prepare the demo content first: OSCAL tests use the real catalogue and profiles.
 See the [Azure deployment, shutdown and rebuild runbook](docs/deployment.md) for stopping/restarting, deleting, rebuilding from Git and deploying into another tenant/subscription. See [identity and permissions](docs/permissions.md) to find the Enterprise application and administer access. Application, infrastructure and controlled content are separate deployment paths. No Azure DevOps organization is needed for local CLI deployment; Azure Pipelines templates support later migration. GitHub Actions runs verification on pushes and pull requests.
 
 - [Architecture assessment and design](docs/architecture.md)
+- [Code maintenance guide](docs/maintenance.md)
 - [API contract](docs/api.md)
 - [Threat model and release checks](docs/security.md)
 - [Demo lifecycle](demo/README.md)

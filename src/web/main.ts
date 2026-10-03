@@ -1,25 +1,35 @@
+import { renderField } from "./fields";
+import { createApiClient } from "./api";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { escapeHtml as h, renderControls } from "../shared/lens/views.mjs";
 import { substituteParameters } from "../shared/lens/parameters.mjs";
-import { flatten, preview } from "../shared/lens/engine.mjs";
+import { buildControlRows } from "./baseline";
 import { roles, uuid, statementParts, reviewStatus } from "../shared/oscal";
 import { validate } from "./validation";
-import type { Json, Ssp, User } from "../shared/types";
+import type {
+  Json,
+  Ssp,
+  User,
+  PinnedBaseline,
+  ContentSummary,
+  SspSummary,
+  Revision,
+} from "../shared/types";
 import "./style.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let msal: PublicClientApplication | undefined,
   scopes: string[] = [],
   demo = false,
   user: User,
-  approved: any,
+  approved: ContentSummary,
   current: Ssp | undefined,
-  baseline: any,
+  baseline: PinnedBaseline,
   tab = "Overview",
   controlIndex = 0,
   dirty = false,
   errors: string[] = [],
-  history: any[] = [],
-  list: any[] = [];
+  history: Omit<Revision, "oscal">[] = [],
+  list: SspSummary[] = [];
 const tabs = [
   "Overview",
   "People & Roles",
@@ -30,31 +40,11 @@ const tabs = [
   "OSCAL / Validation",
 ];
 const body = () => current!.oscal["system-security-plan"];
-async function api(path: string, method = "GET", data?: any) {
-  let token = "";
-  if (msal) {
-    const account = msal.getAllAccounts()[0];
-    if (!account) throw Error("Please sign in");
-    try {
-      token = (await msal.acquireTokenSilent({ account, scopes })).accessToken;
-    } catch {
-      await msal.acquireTokenRedirect({ account, scopes });
-      throw Error("Sign-in required");
-    }
-  }
-  const r = await fetch("/api/" + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: "Bearer " + token } : {}),
-      ...(current ? { "If-Match": String(current.version) } : {}),
-    },
-    body: data === undefined ? undefined : JSON.stringify(data),
-  });
-  const result = await r.json();
-  if (!r.ok) throw Error([result.error, ...(result.details || [])].join("\n"));
-  return result;
-}
+const api = createApiClient({
+  getSession: () => msal,
+  getScopes: () => scopes,
+  getPlan: () => current,
+});
 const editable = () =>
   current &&
   !current.archived &&
@@ -72,10 +62,16 @@ function field(
   kind = "text",
   choices: string[] = [],
 ) {
-  const value = pathValue(path) ?? "",
-    disabled = !editable() ? "disabled" : "";
-  return `<label class="field">${h(label)}${kind === "textarea" ? `<textarea data-path="${h(path)}" ${disabled}>${h(value)}</textarea>` : kind === "select" ? `<select data-path="${h(path)}" ${disabled}>${choices.map((c) => `<option ${value === c ? "selected" : ""}>${h(c)}</option>`).join("")}</select>` : `<input type="${kind}" data-path="${h(path)}" value="${h(value)}" ${disabled}>`}</label>`;
+  return renderField(
+    label,
+    path,
+    pathValue(path) ?? "",
+    Boolean(editable()),
+    kind,
+    choices,
+  );
 }
+
 function info(label: string, value: any) {
   return `<div><small>${h(label)}</small><p>${h(value ?? "—")}</p></div>`;
 }
@@ -145,26 +141,8 @@ async function open(id: string) {
 let rowCache: any[] | undefined;
 function rows() {
   if (rowCache) return rowCache;
-  const authoritative = flatten(baseline.profile.resolved.catalog) as any[];
-  try {
-    const docs = baseline.sources.map((s: any) => ({
-        ...s,
-        name: s.path.split("/").pop(),
-      })),
-      profile = docs.find((s: any) => s.path === baseline.profile.path),
-      p = preview(profile.doc, docs);
-    for (const row of authoritative) {
-      const origin = p.rows.filter((r: any) => r.control.id === row.control.id);
-      if (origin.length === 1) {
-        row.baseControl = origin[0].baseControl;
-        row.baseParameters = origin[0].baseParameters;
-      }
-    }
-  } catch {
-    /* Authoritative resolved content remains usable when Lens cannot preview a merge. */
-  }
-  rowCache = authoritative;
-  return authoritative;
+  rowCache = buildControlRows(baseline);
+  return rowCache;
 }
 function render() {
   if (!current) return;
@@ -286,6 +264,13 @@ function activeReq() {
   );
 }
 function bind() {
+  bindPeopleFields();
+  bindComponentFields();
+  bindControlFields();
+  bindPlanActions();
+}
+
+function bindPeopleFields() {
   document.querySelectorAll<HTMLInputElement>("[data-person]").forEach(
     (e) =>
       (e.oninput = () => {
@@ -314,6 +299,9 @@ function bind() {
         mark();
       }),
   );
+}
+
+function bindComponentFields() {
   document.querySelectorAll<HTMLInputElement>("[data-component]").forEach(
     (e) =>
       (e.onchange = () => {
@@ -349,6 +337,9 @@ function bind() {
         render();
       }),
   );
+}
+
+function bindControlFields() {
   const select = document.querySelector<HTMLSelectElement>("#control-select");
   if (select)
     select.onchange = () => {
@@ -358,9 +349,11 @@ function bind() {
   const search = document.querySelector<HTMLInputElement>("#control-search");
   if (search)
     search.oninput = () => {
+      // Keep the displayed selection consistent with the implementation being edited.
       for (const o of select!.options)
-        // Keep the displayed selection consistent with the implementation being edited.
-        o.hidden = !o.selected && !o.text.toLowerCase().includes(search.value.toLowerCase());
+        o.hidden =
+          !o.selected &&
+          !o.text.toLowerCase().includes(search.value.toLowerCase());
     };
   const role = document.querySelector<HTMLSelectElement>("#req-role");
   if (role)
@@ -433,6 +426,9 @@ function bind() {
         mark();
       }),
   );
+}
+
+function bindPlanActions() {
   const on = (id: string, fn: () => any) =>
     document.querySelector("#" + id)?.addEventListener("click", () => run(fn));
   on("share", async () => {
@@ -508,6 +504,7 @@ function bind() {
         })),
   );
 }
+
 async function save() {
   errors = validate(current!.oscal);
   if (errors.length) {
