@@ -1,4 +1,0 @@
-# Copy to backend.tf for shared/CI deployments and supply -backend-config values.
-terraform {
-  backend "azurerm" {}
-}

@@ -1,9 +1,5 @@
 variable "subscription_id" { type = string }
 variable "tenant_id" { type = string }
-variable "location" {
-  type    = string
-  default = "westus2"
-}
 variable "web_location" {
   type    = string
   default = "westus2"
@@ -36,4 +32,18 @@ variable "monthly_budget" {
 variable "budget_start" {
   type    = string
   default = "2026-10-01T00:00:00Z"
+}
+
+variable "resource_group_name" {
+  type        = string
+  description = "Existing administrator-owned application resource group."
+}
+variable "environment" { type = string }
+variable "owner_object_ids" {
+  type        = set(string)
+  description = "Explicit human and pipeline service-principal owners."
+}
+variable "deployment_object_id" {
+  type        = string
+  description = "Application package deployment identity, independent of content publisher."
 }

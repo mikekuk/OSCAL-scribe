@@ -1,0 +1,20 @@
+{
+  "subscription_id": "00000000-0000-0000-0000-000000000000",
+  "tenant_id": "00000000-0000-0000-0000-000000000000",
+  "resource_group_name": "rg-oscal-scribe-test",
+  "state_resource_group": "rg-oscal-scribe-state",
+  "state_storage_account": "stscribestateexample",
+  "state_key": "scribe.tfstate",
+  "location": "westus2",
+  "web_location": "westus2",
+  "prefix": "oscal-scribe",
+  "environment": "test",
+  "owner_object_ids": [],
+  "security_user_ids": [],
+  "user_ids": [],
+  "publisher_object_id": "",
+  "monthly_budget": 35,
+  "budget_email": "alerts@example.com",
+  "budget_start": "2026-10-01T00:00:00Z",
+  "allow_demo": true
+}

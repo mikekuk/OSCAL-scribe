@@ -1,0 +1,20 @@
+parameters:
+- name: build
+  type: boolean
+  default: false
+steps:
+- task: NodeTool@0
+  inputs: {versionSpec: '22.x'}
+- bash: bash scripts/ci/install-terraform.sh
+  displayName: Install verified Terraform 1.11.4
+- ${{ if eq(parameters.build, true) }}:
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: '21'
+      jdkArchitectureOption: x64
+      jdkSourceOption: PreInstalled
+  - bash: |
+      set -euo pipefail
+      npm ci
+      bash scripts/install-oscal-cli.sh
+    displayName: Install locked build dependencies and OSCAL CLI

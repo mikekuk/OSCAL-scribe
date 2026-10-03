@@ -2,11 +2,13 @@
 
 Demo content is opt-in. It is not included in the static site or created automatically in Cosmos.
 
+For cloud deployment, run `pipelines/demo.yml` in Azure DevOps after the application deployment. The environment configuration must set `allow_demo: true`. This pipeline builds and publishes demo data independently; no local files or login are needed. See the [cloud setup guide](../docs/deployment.md#6-add-demo-data-separately).
+
+For optional local development only:
+
 ```sh
 npm run demo:prepare
 OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
-# Set COSMOS_ENDPOINT to your TEST account; authenticate with the publisher identity.
-ALLOW_DEMO_PUBLICATION=true npm run content:publish
 ```
 
 The importer fetches official NIST SP800-53 revision 5.2.0 at commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de`, retaining source URLs/checksums and original unresolved Low/Moderate profiles. Output lives only in ignored `work/demo-source` and `work/content-release.json`. All nested profile imports are staged locally before the resolver runs; the resolver cannot choose an unapproved remote import.

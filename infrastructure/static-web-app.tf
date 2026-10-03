@@ -1,6 +1,6 @@
 resource "azurerm_static_web_app" "web" {
   name                = local.name
-  resource_group_name = azurerm_resource_group.main.name
+  resource_group_name = data.azurerm_resource_group.main.name
   location            = var.web_location
   sku_tier            = "Standard"
   sku_size            = "Standard"

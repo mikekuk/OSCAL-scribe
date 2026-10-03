@@ -17,7 +17,7 @@ jobs:
           java-version: 21
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.5.7
+          terraform_version: 1.11.4
       - run: npm ci
       - run: bash scripts/install-oscal-cli.sh
       - run: npm run demo:prepare
@@ -26,5 +26,5 @@ jobs:
           OSCAL_CLI: ${{ github.workspace }}/work/oscal-cli/bin/oscal-cli
       - run: npm run check
       - run: terraform -chdir=infrastructure fmt -check
-      - run: terraform -chdir=infrastructure init -backend=false
+      - run: terraform -chdir=infrastructure init -backend=false -lockfile=readonly
       - run: terraform -chdir=infrastructure validate

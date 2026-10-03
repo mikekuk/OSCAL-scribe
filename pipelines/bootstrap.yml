@@ -1,0 +1,26 @@
+# Creates only the central backend, in resource groups provisioned by an administrator.
+trigger: none
+pr: none
+parameters:
+- name: serviceConnection
+  type: string
+  default: oscal-scribe-azure
+- name: configFile
+  type: string
+  default: config/test.json
+- name: variableGroup
+  type: string
+  default: oscal-scribe-test
+variables:
+- group: ${{ parameters.variableGroup }}
+pool: {vmImage: ubuntu-24.04}
+steps:
+- checkout: self
+- task: NodeTool@0
+  inputs: {versionSpec: '22.x'}
+- template: templates/azure-step.yml
+  parameters:
+    serviceConnection: ${{ parameters.serviceConnection }}
+    configFile: ${{ parameters.configFile }}
+    displayName: Create protected central Terraform backend
+    script: node scripts/ci/bootstrap.mjs

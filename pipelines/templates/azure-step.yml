@@ -1,0 +1,35 @@
+parameters:
+- name: serviceConnection
+  type: string
+- name: configFile
+  type: string
+- name: script
+  type: string
+- name: displayName
+  type: string
+- name: name
+  type: string
+  default: Azure
+- name: workingDirectory
+  type: string
+  default: $(Build.SourcesDirectory)
+steps:
+- task: AzureCLI@2
+  name: ${{ parameters.name }}
+  displayName: ${{ parameters.displayName }}
+  inputs:
+    workingDirectory: ${{ parameters.workingDirectory }}
+    azureSubscription: ${{ parameters.serviceConnection }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    addSpnToEnvironment: true
+    visibleAzLogin: false
+    inlineScript: |
+      set -euo pipefail
+      source scripts/ci/identity.sh
+      ${{ parameters.script }}
+  env:
+    SCRIBE_ENVIRONMENT_JSON: $(scribeEnvironment)
+    SCRIBE_CONFIG: ${{ parameters.configFile }}
+    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    SYSTEM_OIDCREQUESTURI: $(System.OidcRequestUri)

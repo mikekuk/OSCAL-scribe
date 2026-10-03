@@ -1,0 +1,97 @@
+trigger: none
+pr: none
+parameters:
+- name: action
+  type: string
+  default: stop
+  values: [stop, start, destroy]
+- name: serviceConnection
+  type: string
+  default: oscal-scribe-azure
+- name: configFile
+  type: string
+  default: config/test.json
+- name: environmentName
+  type: string
+  default: scribe-test
+- name: variableGroup
+  type: string
+  default: oscal-scribe-test
+variables:
+- group: ${{ parameters.variableGroup }}
+pool: {vmImage: ubuntu-24.04}
+stages:
+- ${{ if ne(parameters.action, 'destroy') }}:
+  - stage: Operate
+    lockBehavior: sequential
+    jobs:
+    - deployment: Operate
+      environment: ${{ parameters.environmentName }}
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: self
+            - template: templates/tools.yml
+            - template: templates/azure-step.yml
+              parameters:
+                serviceConnection: ${{ parameters.serviceConnection }}
+                configFile: ${{ parameters.configFile }}
+                displayName: ${{ parameters.action }} Function App
+                script: |
+                  node scripts/ci/terraform.mjs
+                  az functionapp ${{ parameters.action }} --resource-group "$(terraform -chdir=infrastructure output -raw resource_group)" --name "$(terraform -chdir=infrastructure output -raw function_name)" --output none
+- ${{ if eq(parameters.action, 'destroy') }}:
+  - stage: PlanDestroy
+    jobs:
+    - job: PlanDestroy
+      steps:
+      - checkout: self
+      - template: templates/tools.yml
+      - template: templates/azure-step.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          configFile: ${{ parameters.configFile }}
+          displayName: Plan destruction of application and Entra objects
+          script: |
+            node scripts/ci/terraform.mjs
+            terraform -chdir=infrastructure plan -destroy -input=false -lock-timeout=5m -var-file=../work/ci/deployment.tfvars.json -out=../work/ci/destroy.tfplan
+      - publish: work/ci/destroy.tfplan
+        artifact: destroy-plan
+  - stage: ConfirmDestroy
+    dependsOn: PlanDestroy
+    jobs:
+    - job: ConfirmDestroy
+      pool: server
+      timeoutInMinutes: 1440
+      steps:
+      - task: ManualValidation@1
+        timeoutInMinutes: 720
+        inputs:
+          notifyUsers: ''
+          allowApproversToApproveTheirOwnRuns: true
+          instructions: DESTRUCTIVE. Review the plan and backups. Approval deletes Scribe resources, SSPs, published content and its Entra application. The state backend and administrator-created resource groups remain.
+          onTimeout: reject
+  - stage: Destroy
+    lockBehavior: sequential
+    dependsOn: ConfirmDestroy
+    jobs:
+    - deployment: Destroy
+      environment: ${{ parameters.environmentName }}
+      timeoutInMinutes: 60
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: self
+            - download: current
+              artifact: destroy-plan
+            - template: templates/tools.yml
+            - template: templates/azure-step.yml
+              parameters:
+                serviceConnection: ${{ parameters.serviceConnection }}
+                configFile: ${{ parameters.configFile }}
+                displayName: Apply reviewed destruction plan
+                script: |
+                  node scripts/ci/terraform.mjs
+                  terraform -chdir=infrastructure apply -input=false -lock-timeout=5m "$(Pipeline.Workspace)/destroy-plan/destroy.tfplan"

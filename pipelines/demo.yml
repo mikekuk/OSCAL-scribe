@@ -1,0 +1,38 @@
+# Explicitly optional. Never invoked by normal application/infrastructure deployment.
+trigger: none
+pr: none
+parameters:
+- name: serviceConnection
+  type: string
+  default: oscal-scribe-azure
+- name: configFile
+  type: string
+  default: config/test.json
+- name: variableGroup
+  type: string
+  default: oscal-scribe-test
+variables:
+- group: ${{ parameters.variableGroup }}
+pool: {vmImage: ubuntu-24.04}
+steps:
+- checkout: self
+- template: templates/tools.yml
+  parameters: {build: true}
+- bash: |
+    set -euo pipefail
+    npm run demo:prepare
+    OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+  displayName: Build separate SP800-53 Low and Moderate demo release
+- publish: work/content-release.json
+  artifact: demo-release
+- template: templates/azure-step.yml
+  parameters:
+    serviceConnection: ${{ parameters.serviceConnection }}
+    configFile: ${{ parameters.configFile }}
+    displayName: Publish demo content to the selected test environment
+    script: |
+      node --input-type=module -e "import{loadConfig}from'./scripts/ci/config.mjs';if(!loadConfig().allow_demo)throw Error('Demo publication is disabled in this environment')"
+      node scripts/ci/terraform.mjs
+      export COSMOS_ENDPOINT=$(terraform -chdir=infrastructure output -raw cosmos_endpoint)
+      export ALLOW_DEMO_PUBLICATION=true
+      npm run content:publish

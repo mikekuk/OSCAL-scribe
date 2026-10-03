@@ -1,0 +1,14 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
+rmSync('work/application',{recursive:true,force:true});
+rmSync('work/api-package',{recursive:true,force:true});
+mkdirSync('work/api-package',{recursive:true});
+mkdirSync('work/application',{recursive:true});
+cpSync('dist/web','work/application/web',{recursive:true});
+for (const f of ['functions.js','host.json']) cpSync(`dist/api/${f}`,`work/api-package/${f}`);
+for (const f of ['package.json','package-lock.json']) cpSync(f,`work/api-package/${f}`);
+const pkg=JSON.parse(readFileSync('work/api-package/package.json','utf8')); pkg.main='functions.js';
+writeFileSync('work/api-package/package.json',JSON.stringify(pkg));
+execFileSync('npm',['ci','--omit=dev','--ignore-scripts'],{cwd:'work/api-package',stdio:'inherit'});
+execFileSync('zip',['-qr','../application/api.zip','.'],{cwd:'work/api-package',stdio:'inherit'});
+writeFileSync('work/application/provenance.json',JSON.stringify({commit:process.env.BUILD_SOURCEVERSION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),node:process.version}));
