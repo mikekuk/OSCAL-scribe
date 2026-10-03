@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = "~> 1.11.0"
   required_providers {
     azurerm = { source = "hashicorp/azurerm", version = "~> 4.0" }
     azuread = { source = "hashicorp/azuread", version = "~> 3.0" }
@@ -13,15 +13,13 @@ provider "azurerm" {
   tenant_id                       = var.tenant_id
 }
 provider "azuread" { tenant_id = var.tenant_id }
-data "azurerm_client_config" "current" {}
 resource "random_string" "suffix" {
   length  = 6
   special = false
   upper   = false
 }
 locals { name = "${var.prefix}-${random_string.suffix.result}" }
-resource "azurerm_resource_group" "main" {
-  name     = "rg-${var.prefix}-test"
-  location = var.location
-  tags     = { application = "OSCAL Scribe", environment = "test", owner = "personal" }
+# Administrator-owned scope: the pipeline needs no subscription-wide create permission.
+data "azurerm_resource_group" "main" {
+  name = var.resource_group_name
 }

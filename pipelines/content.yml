@@ -1,36 +1,62 @@
 trigger: none
+pr: none
 parameters:
 - name: serviceConnection
   type: string
+  default: oscal-scribe-azure
+- name: configFile
+  type: string
+  default: config/test.json
 - name: contentRepository
   type: string
   default: ControlledOSCAL
+- name: contentRef
+  type: string
+  default: refs/heads/main
+- name: variableGroup
+  type: string
+  default: oscal-scribe-test
 resources:
   repositories:
   - repository: controlled
     type: git
     name: ${{ parameters.contentRepository }}
-pool: { vmImage: ubuntu-latest }
+    ref: ${{ parameters.contentRef }}
+variables:
+- group: ${{ parameters.variableGroup }}
+pool: {vmImage: ubuntu-24.04}
 steps:
 - checkout: self
   path: s/scribe
 - checkout: controlled
   path: s/controlled
 - task: NodeTool@0
-  inputs: { versionSpec: '22.x' }
-- script: |
+  inputs: {versionSpec: '22.x'}
+- task: JavaToolInstaller@0
+  inputs:
+    versionSpec: '21'
+    jdkArchitectureOption: x64
+    jdkSourceOption: PreInstalled
+- bash: |
     set -euo pipefail
+    bash scripts/ci/install-terraform.sh
     npm ci
     bash scripts/install-oscal-cli.sh
     OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- ../controlled
+    git -C ../controlled rev-parse HEAD > work/content-source-commit.txt
   workingDirectory: $(Pipeline.Workspace)/s/scribe
   displayName: Validate and resolve controlled content
-- task: AzureCLI@2
-  inputs:
-    azureSubscription: ${{ parameters.serviceConnection }}
-    scriptType: bash
-    scriptLocation: inlineScript
+- publish: $(Pipeline.Workspace)/s/scribe/work/content-release.json
+  artifact: approved-content-release
+- publish: $(Pipeline.Workspace)/s/scribe/work/content-source-commit.txt
+  artifact: content-provenance
+- template: templates/azure-step.yml
+  parameters:
+    serviceConnection: ${{ parameters.serviceConnection }}
+    configFile: ${{ parameters.configFile }}
     workingDirectory: $(Pipeline.Workspace)/s/scribe
-    inlineScript: npm run content:publish
-  env:
-    COSMOS_ENDPOINT: $(cosmosEndpoint)
+    displayName: Publish approved controlled content
+    script: |
+      node scripts/ci/terraform.mjs
+      export COSMOS_ENDPOINT=$(terraform -chdir=infrastructure output -raw cosmos_endpoint)
+      npm run content:publish

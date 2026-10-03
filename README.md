@@ -32,9 +32,13 @@ terraform -chdir=infrastructure validate
 
 Prepare the demo content first: OSCAL tests use the real catalogue and profiles. Tests cover object-level authorization, sharing boundaries, immutable revisions, attestation, token verification, malformed input, NIST baseline coverage and inherited Lens import/tailoring/rendering regressions. `npm run build` type-checks and produces the static site plus the Functions entry point.
 
-## Deploy
+## Deploy from Azure DevOps
 
-See the [Azure deployment, shutdown and rebuild runbook](docs/deployment.md) for stopping/restarting, deleting, rebuilding from Git and deploying into another tenant/subscription. See [identity and permissions](docs/permissions.md) to find the Enterprise application and administer access. Application, infrastructure and controlled content are separate deployment paths. No Azure DevOps organization is needed for local CLI deployment; Azure Pipelines templates support later migration. GitHub Actions runs verification on pushes and pull requests.
+Use the [cloud-only Azure DevOps setup guide](docs/deployment.md). Create the Azure DevOps project and federated service connection, run the backend setup pipeline, then enable `azure-pipelines.yml` for main-branch updates. It builds/tests on a Microsoft-hosted agent and deploys the tested artifact on main merges. Infrastructure changes pause for plan approval. Terraform state lives in Azure Storage from the first deployment. No local tools, state, credentials or generated files are required.
+
+`config/test.json` provides the template; real environment settings live in one protected Azure DevOps variable group. Create a separate group for work Azure. Demo data is an optional, separate pipeline; normal deployment does not seed it. The operations pipeline supports stop, start and approved destruction. See [identity and permissions](docs/permissions.md) for application access.
+
+The local demonstration above is optional development tooling, not a deployment prerequisite. GitHub Actions and Azure DevOps PR runs verify code without deploying resources. Azure DevOps main merges deploy once you enable the pipeline.
 
 - [Architecture assessment and design](docs/architecture.md)
 - [API contract](docs/api.md)

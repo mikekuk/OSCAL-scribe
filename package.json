@@ -13,7 +13,7 @@
     "content:build": "tsx scripts/build-content.ts",
     "content:publish": "tsx scripts/publish-content.ts",
     "build": "node scripts/generate-validator.mjs && tsc --noEmit && vite build && esbuild src/api/functions.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/api/functions.js && node scripts/package-api.mjs",
-    "test": "tsx --test tests/*.test.ts && node --test tests/lens/*.cjs",
+    "test": "tsx --test tests/*.test.ts && node --test tests/lens/*.cjs && node --test tests/pipelines/*.test.mjs",
     "check": "npm test && npm run build",
     "predev": "node scripts/generate-validator.mjs"
   },
@@ -31,6 +31,7 @@
     "esbuild": "^0.25.10",
     "tsx": "^4.20.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "yaml": "2.8.1"
   }
 }

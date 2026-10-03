@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, rmSync, cpSync } from "node:fs";
 import { createHash } from "node:crypto";
 const run = (cmd, args, options = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", ...options });
@@ -7,28 +7,18 @@ const output = JSON.parse(
     run("terraform", ["-chdir=infrastructure", "output", "-json"]),
   ),
   v = (k) => output[k].value;
-console.log("Building the application");
-run("npm", ["run", "build"], { stdio: "inherit" });
-writeFileSync(
-  "dist/web/config.json",
-  JSON.stringify({ tenantId: v("tenant_id"), clientId: v("client_id") }),
-);
-// Runtime dependencies are installed from the committed lockfile, then development packages pruned.
-rmSync("work/api-package", { recursive: true, force: true });
-mkdirSync("work/api-package", { recursive: true });
-run("cp", ["dist/api/functions.js", "dist/api/host.json", "work/api-package/"]);
-run("cp", ["package.json", "package-lock.json", "work/api-package/"]);
-const pkg = JSON.parse(readFileSync("work/api-package/package.json", "utf8"));
-pkg.main = "functions.js";
-writeFileSync("work/api-package/package.json", JSON.stringify(pkg));
-run("npm", ["ci", "--omit=dev", "--ignore-scripts"], {
-  cwd: "work/api-package",
-  stdio: "inherit",
-});
-rmSync("work/api.zip", { force: true });
-run("zip", ["-qr", "../api.zip", "."], { cwd: "work/api-package" });
+const artifact = process.argv[2];
+if (!artifact) throw Error("Pass the downloaded Azure Pipelines application artifact directory");
+const provenance = JSON.parse(readFileSync(`${artifact}/provenance.json`, "utf8"));
+if (process.env.BUILD_SOURCEVERSION && provenance.commit !== process.env.BUILD_SOURCEVERSION)
+  throw Error("Application artifact does not match this pipeline commit");
+mkdirSync("work", { recursive: true });
+rmSync("work/deploy-web", { recursive: true, force: true });
+cpSync(`${artifact}/web`, "work/deploy-web", { recursive: true });
+writeFileSync("work/deploy-web/config.json", JSON.stringify({tenantId:v("tenant_id"),clientId:v("client_id")}));
+const apiZip = `${artifact}/api.zip`;
 const name =
-  createHash("sha256").update(readFileSync("work/api.zip")).digest("hex") +
+  createHash("sha256").update(readFileSync(apiZip)).digest("hex") +
   ".zip";
 run("az", [
   "storage",
@@ -54,7 +44,7 @@ run("az", [
   "--name",
   name,
   "--file",
-  "work/api.zip",
+  apiZip,
   "--auth-mode",
   "login",
   "--overwrite",
@@ -107,7 +97,7 @@ run(
     "--yes",
     "@azure/static-web-apps-cli@2.0.8",
     "deploy",
-    "dist/web",
+    "work/deploy-web",
     "--env",
     "production",
   ],

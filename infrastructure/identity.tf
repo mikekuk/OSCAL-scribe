@@ -1,9 +1,9 @@
 resource "azuread_application" "scribe" {
   # The URI has a separate resource because it depends on the generated client ID.
   lifecycle { ignore_changes = [identifier_uris] }
-  display_name     = "${local.name} test"
+  display_name     = "${local.name} ${var.environment}"
   sign_in_audience = "AzureADMyOrg"
-  owners           = [data.azurerm_client_config.current.object_id]
+  owners           = var.owner_object_ids
   single_page_application { redirect_uris = ["https://${azurerm_static_web_app.web.default_host_name}/", "http://localhost:5173/"] }
   api {
     requested_access_token_version = 2
@@ -40,7 +40,7 @@ resource "azuread_application_identifier_uri" "api" {
 resource "azuread_service_principal" "scribe" {
   client_id                    = azuread_application.scribe.client_id
   app_role_assignment_required = true
-  owners                       = [data.azurerm_client_config.current.object_id]
+  owners                       = var.owner_object_ids
 }
 resource "azuread_application_pre_authorized" "spa" {
   application_id       = azuread_application.scribe.id

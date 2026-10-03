@@ -1,17 +1,127 @@
+# Main merges deploy automatically. PRs verify only; infrastructure changes require review.
 trigger:
-  branches: { include: [main] }
-  paths: { exclude: [infrastructure/**, demo/**] }
-pool: { vmImage: ubuntu-latest }
-steps:
-- task: NodeTool@0
-  inputs: { versionSpec: '22.x' }
-- script: npm ci
-  displayName: Install locked dependencies
-- script: |
-    bash scripts/install-oscal-cli.sh
-    npm run demo:prepare
-    OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
-    npm run check
-  displayName: OSCAL, security tests and production build
-- publish: dist
-  artifact: application
+  batch: true
+  branches: {include: [main]}
+pr:
+  branches: {include: [main]}
+parameters:
+- name: deploy
+  type: boolean
+  default: true
+- name: serviceConnection
+  type: string
+  default: oscal-scribe-azure
+- name: configFile
+  type: string
+  default: config/test.json
+- name: environmentName
+  type: string
+  default: scribe-test
+- name: variableGroup
+  type: string
+  default: oscal-scribe-test
+variables:
+- group: ${{ parameters.variableGroup }}
+pool: {vmImage: ubuntu-24.04}
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    steps:
+    - checkout: self
+    - template: pipelines/templates/tools.yml
+      parameters: {build: true}
+    - bash: |
+        set -euo pipefail
+        npm run demo:prepare
+        OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+        npm run check
+        terraform -chdir=infrastructure init -backend=false -lockfile=readonly
+        terraform -chdir=infrastructure validate
+        terraform -chdir=infrastructure fmt -check
+        node scripts/ci/package.mjs
+      displayName: Test and package the application
+    - publish: work/application
+      artifact: application
+- ${{ if eq(parameters.deploy, true) }}:
+  - stage: Plan
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+    - job: Plan
+      steps:
+      - checkout: self
+      - template: pipelines/templates/tools.yml
+      - template: pipelines/templates/azure-step.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          configFile: ${{ parameters.configFile }}
+          name: TerraformPlan
+          displayName: Plan infrastructure using central state
+          script: |
+            node scripts/ci/terraform.mjs --allow-new
+            set +e
+            terraform -chdir=infrastructure plan -input=false -detailed-exitcode -lock-timeout=5m -var-file=../work/ci/deployment.tfvars.json -out=../work/ci/deployment.tfplan
+            result=$?
+            set -e
+            if [ "$result" = 1 ]; then exit 1; fi
+            if [ "$result" = 2 ]; then
+              echo '##vso[task.setvariable variable=hasChanges;isOutput=true]true'
+            elif [ "$result" = 0 ]; then
+              echo '##vso[task.setvariable variable=hasChanges;isOutput=true]false'
+            else
+              exit "$result"
+            fi
+      - publish: work/ci/deployment.tfplan
+        artifact: infrastructure-plan
+  - stage: Review
+    dependsOn: Plan
+    condition: and(succeeded(), eq(dependencies.Plan.outputs['Plan.TerraformPlan.hasChanges'], 'true'))
+    jobs:
+    - job: Review
+      pool: server
+      timeoutInMinutes: 1440
+      steps:
+      - task: ManualValidation@1
+        timeoutInMinutes: 720
+        inputs:
+          notifyUsers: ''
+          allowApproversToApproveTheirOwnRuns: true
+          instructions: Review the Terraform plan in the Plan job. Approve only the intended environment and changes. This will deploy infrastructure and the tested application artifact. Demo data is separate.
+          onTimeout: reject
+  - stage: Deploy
+    dependsOn: [Plan, Review]
+    condition: and(not(canceled()), in(dependencies.Plan.result, 'Succeeded', 'SucceededWithIssues'), in(dependencies.Review.result, 'Succeeded', 'Skipped'))
+    lockBehavior: sequential
+    jobs:
+    - deployment: Deploy
+      environment: ${{ parameters.environmentName }}
+      timeoutInMinutes: 60
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - checkout: self
+            - download: current
+              artifact: application
+            - download: current
+              artifact: infrastructure-plan
+            - template: pipelines/templates/tools.yml
+            - template: pipelines/templates/azure-step.yml
+              parameters:
+                serviceConnection: ${{ parameters.serviceConnection }}
+                configFile: ${{ parameters.configFile }}
+                name: InfrastructureApply
+                displayName: Apply the reviewed infrastructure plan
+                script: |
+                  node scripts/ci/terraform.mjs --allow-new
+                  terraform -chdir=infrastructure apply -input=false -lock-timeout=5m "$(Pipeline.Workspace)/infrastructure-plan/deployment.tfplan"
+            - template: pipelines/templates/azure-step.yml
+              parameters:
+                serviceConnection: ${{ parameters.serviceConnection }}
+                configFile: ${{ parameters.configFile }}
+                name: ApplicationDeploy
+                displayName: Deploy the tested application artifact
+                script: |
+                  node scripts/ci/terraform.mjs
+                  node scripts/deploy-app.mjs "$(Pipeline.Workspace)/application"
