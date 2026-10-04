@@ -148,6 +148,19 @@ Destroy preserves the two administrator-created resource groups, their boundary 
 
 To rebuild after `destroy`, leave/recreate the group boundaries and required permissions, then run **Build and deploy** with `deploy: true`. Run Demo content only if wanted. Source recreates an empty environment; restoring SSPs and historical releases requires a separate tested Cosmos backup/restore procedure.
 
+## Recover a partially failed destroy
+
+Keep **Build and deploy** disabled so a main merge cannot rebuild the environment during cleanup. Leave the central state account and `tfstate` blob intact.
+
+1. Open **Scribe – Operations → Run pipeline** and choose the current `main` branch, `action: destroy`, and the **same variable group, service connection and environment** used by the failed run.
+2. Start a **new run from PlanDestroy**. Do not use “Rerun failed jobs” on the old Destroy stage: its saved plan describes the environment before the partial deletion.
+3. Review the refreshed plan. It should contain only the remaining intended deletions; approve the new plan. Terraform refresh can reconcile tracked objects that Azure has already removed.
+4. Inspect the application resource group and Scribe Enterprise application/app registration after completion. Azure-created Smart Detection action groups are separate from Terraform-managed Application Insights resources; inspect leftovers by resource type.
+
+For `Removing pre-authorized application ... 404`, the AzureAD provider has read the application and then failed while updating its pre-authorization list. The message can mean the application or a referenced object disappeared; the error alone does not establish which. The configuration explicitly keeps the Scribe service principal and API URI until pre-authorization cleanup completes, and destruction runs serially to avoid concurrent directory cleanup requests. This is ordering hardening, not a guarantee against all Microsoft Graph consistency errors.
+
+If a **new** run still fails, retain its log lines for `azuread_application.scribe`, `azuread_service_principal.scribe`, `azuread_application_identifier_uri.api` and `azuread_application_pre_authorized.spa`, plus the plan summary. Check the application object ID from the error in the configured Entra tenant. Do not delete the state blob, remove live resources from state, recreate the app or grant broader permissions as a blind workaround. Diagnose the remaining object/reference before any targeted repair.
+
 ## Deploy the same repository at work
 
 1. Copy/import this Git repository into your work Azure Repos project, or connect your work Azure DevOps project to an approved GitHub copy. Preserve all files, including dotfiles and both lockfiles. For a private GitHub import, use the import screen's secure repository authentication; do not put a GitHub token into YAML.
