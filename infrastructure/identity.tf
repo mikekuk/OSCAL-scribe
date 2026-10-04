@@ -43,6 +43,9 @@ resource "azuread_service_principal" "scribe" {
   owners                       = var.owner_object_ids
 }
 resource "azuread_application_pre_authorized" "spa" {
+  # Graph can resolve the client through its service principal when updating
+  # pre-authorizations. Keep that principal and the API URI until cleanup ends.
+  depends_on           = [azuread_service_principal.scribe, azuread_application_identifier_uri.api]
   application_id       = azuread_application.scribe.id
   authorized_client_id = azuread_application.scribe.client_id
   permission_ids       = ["e5a11461-e9ce-49d5-bbbc-7d6418f4100e"]

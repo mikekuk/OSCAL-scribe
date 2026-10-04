@@ -55,7 +55,7 @@ stages:
           displayName: Plan destruction of application and Entra objects
           script: |
             node scripts/ci/terraform.mjs
-            terraform -chdir=infrastructure plan -destroy -input=false -lock-timeout=5m -var-file=../work/ci/deployment.tfvars.json -out=../work/ci/destroy.tfplan
+            terraform -chdir=infrastructure plan -destroy -parallelism=1 -input=false -lock-timeout=5m -var-file=../work/ci/deployment.tfvars.json -out=../work/ci/destroy.tfplan
       - publish: work/ci/destroy.tfplan
         artifact: destroy-plan
   - stage: ConfirmDestroy
@@ -94,4 +94,4 @@ stages:
                 displayName: Apply reviewed destruction plan
                 script: |
                   node scripts/ci/terraform.mjs
-                  terraform -chdir=infrastructure apply -input=false -lock-timeout=5m "$(Pipeline.Workspace)/destroy-plan/destroy.tfplan"
+                  terraform -chdir=infrastructure apply -parallelism=1 -input=false -lock-timeout=5m "$(Pipeline.Workspace)/destroy-plan/destroy.tfplan"
