@@ -6,7 +6,7 @@ Scribe uses Microsoft Entra sign-in plus server-enforced, per-plan permissions. 
 
 Every cloud deployment creates **both** a Scribe app registration and Enterprise application. Their display name is `<prefix>-<generated suffix> <environment>`. The app registration defines sign-in, the API scope and app roles; the Enterprise application holds the tenant's user assignments with **Assignment required** enabled. These are directory objects, not resources inside the Azure resource group.
 
-The earlier personal `oscal-scribe-u72bee test` deployment is retired. Do not reuse its old client/object IDs. The new pipeline generates fresh objects and publishes the new public client ID in the site's `config.json`.
+The pipeline publishes the deployment's public client ID in the site's `config.json`. Use that ID to find the matching Entra objects.
 
 1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) in the target tenant from the protected Azure DevOps configuration.
 2. In **Enterprise applications → All applications**, search for the generated Scribe name; open **Users and groups** to inspect assignments.
@@ -55,12 +55,16 @@ Attestation records the authorized actor, a declared system role, saved revision
 
 Find the person's **user object ID in the target tenant** under Entra ID → Users → the user → Overview. For a guest, use the guest object ID in that tenant, not the person's home-tenant ID. Do not use an email address, subscription ID or app client ID.
 
-Edit the deployment's checked-in environment configuration, retaining the other intended users:
+Open **Azure DevOps → Pipelines → Library → your environment's variable group** and edit the secret **scribeEnvironment** JSON. Update these fields, retaining the other intended users:
 
-```hcl
-security_user_ids = ["<TARGET-TENANT-SECURITY-USER-OBJECT-ID>"]
-user_ids          = ["<TARGET-TENANT-ORDINARY-USER-OBJECT-ID>"]
+```json
+{
+  "security_user_ids": ["<TARGET-TENANT-SECURITY-USER-OBJECT-ID>"],
+  "user_ids": ["<TARGET-TENANT-ORDINARY-USER-OBJECT-ID>"]
+}
 ```
+
+This shows only the access fields; preserve the other fields in the complete configuration.
 
 Edit `security_user_ids` or `user_ids` in the protected `scribeEnvironment` JSON and manually run Build and deploy. The main Azure DevOps pipeline plans the access changes and pauses for review before applying them. To revoke a Terraform-managed assignment, remove the object ID from the relevant list. Assign only one intended role; if a person has both, Security wins.
 

@@ -4,7 +4,7 @@ The supported deployment path is **GitHub or Azure Repos → Azure DevOps Micros
 
 Azure DevOps is a separate service from an Azure subscription. You need an Azure DevOps organization and project, a repository connection, and a federated Azure service connection. A few administrator setup steps cannot be granted by the application to itself; these are listed below.
 
-The previous personal deployment was destroyed on 3 October 2026. Do not copy or migrate its local state into this new setup. The first pipeline deployment creates a fresh application and database. Saved data from the retired test bed is not restored.
+A first deployment creates an empty application and database. Follow sections 1–5 in order, then optionally publish the demo content in section 6.
 
 ## What each pipeline does
 
@@ -16,7 +16,7 @@ The previous personal deployment was destroyed on 3 October 2026. Do not copy or
 | Scribe – Operations | `pipelines/operations.yml` | Stop, start, or review and destroy the application |
 | Scribe – Controlled content | `pipelines/content.yml` | Later, publish approved content from an Azure Repos controlled-content repository |
 
-The former infrastructure and application YAML entry points are consolidated into the main pipeline. There is no need to run separate infrastructure and application pipelines for a first deployment.
+Use Backend setup to prepare central Terraform storage, then Build and deploy to create the infrastructure and publish the application.
 
 **Do not run Backend setup or Build and deploy until you intend to create billable resources.** GitHub Actions and PR verification create none. Keep the deployment pipeline disabled until you are ready to enable main-merge deployment.
 
@@ -27,7 +27,7 @@ The former infrastructure and application YAML entry points are consolidated int
 3. In **Pipelines → New pipeline**, choose **GitHub**, authorize Azure Pipelines to read `mikekuk/OSCAL-scribe`, then select **Existing Azure Pipelines YAML file**. Select `/azure-pipelines.yml`. Save it as **Scribe – Build and deploy**. Save without running until the backend and permissions are ready. Once enabled, main-branch merges deploy automatically; PR runs only verify.
 4. Create the Backend setup, Demo content and Operations pipelines the same way, choosing their YAML paths from the table. Complete the variable group in section 4 before saving/running the YAML if Azure DevOps reports a missing group. The controlled-content pipeline is optional until you have real content.
 
-5. In **Pipelines → Environments**, create **`scribe-test`**. Open **Approvals and checks → Add check → Exclusive lock**. Both deployment and operations use this same environment with sequential locking, so they cannot run against it at the same time. Authorize only the Scribe pipelines. For another environment, use its own name and pass it as `environmentName` in both pipelines.
+5. In **Pipelines → Environments**, create **`scribe-test`**. Open **Approvals and checks → Add check → Exclusive lock**. Both deployment and operations use this same environment with sequential locking, so they cannot run against it at the same time. Open the environment's **Security → Pipeline permissions → + (Add pipeline)** and add **Scribe – Build and deploy** and **Scribe – Operations**. For another environment, use its own name and pass it as `environmentName` in both pipelines.
 6. Until you are ready, open the main pipeline's **Settings** and disable processing of new run requests. Re-enable it after setup. Main pushes/accepted PRs then build and deploy automatically; `deploy: false` is available for a manual verification-only run. Azure Repos PR validation is configured as a branch policy on `main`; GitHub PR validation uses the YAML `pr` trigger.
 
 Only grant repository access to the repositories you intend this project to build. Do not put Azure credentials or tokens in GitHub. WIF supplies short-lived credentials; the variable group stores environment settings only.
@@ -42,6 +42,17 @@ Use your intended subscription and its tenant. Their IDs are shown in Azure port
 
 The backend bootstrap creates storage inside the separate state group. Application destruction leaves both group boundaries and the state backend intact.
 
+### Choose the regions before creating the groups
+
+| Setting | What it controls |
+| --- | --- |
+| Application resource group's location | Functions/Y1 hosting, Cosmos DB, application storage and monitoring |
+| `location` in the Library JSON | Terraform state storage account location |
+| `web_location` in the Library JSON | Static Web App location |
+| State resource group's location | Metadata location for that group; it does not set the storage account's location |
+
+For a simple West US 2 setup, create both groups there and set both JSON location fields to `westus2`. Confirm that the subscription has Y1 capacity in the chosen application region before deploying. Changing the JSON `location` does not move the Function hosting plan. State storage can be in a different region from the application; that alone does not require rebuilding either group.
+
 ## 3. Create the federated Azure service connection
 
 In **Project settings → Service connections → New service connection → Azure Resource Manager**:
@@ -49,14 +60,28 @@ In **Project settings → Service connections → New service connection → Azu
 1. Choose **App registration (automatic)** and **Workload identity federation**. If automatic registration is unavailable, have your administrator create an app registration and use the manual WIF option with the exact issuer and subject supplied by Azure DevOps.
 2. Select the intended subscription and the **application resource group**, `rg-oscal-scribe-test`.
 3. Name the connection **`oscal-scribe-azure`**. Do not create a client secret.
-4. Authorize only these Scribe pipelines to use the connection. Do not grant access to all pipelines.
-5. Use **Manage service principal** to find the connection's Entra application and service-principal object ID. This is the deployment identity, not Scribe's end-user application.
+4. Save the connection with **Grant access permission to all pipelines** unchecked. Open **Project settings → Service connections → oscal-scribe-azure → ⋯ (More actions) → Security**. Under **Pipeline permissions**, click **+ (Add pipeline)** and add **Scribe – Backend setup**, **Scribe – Build and deploy**, **Scribe – Operations** and **Scribe – Demo content**, confirming each selection if prompted. Add Controlled content when you use it. These pipelines must already be saved in Azure DevOps to appear in the selector; YAML files in GitHub alone are not enough. Adding access does not run a pipeline.
+5. Return to the connection and select **Manage App registration**. On **Overview**, note its display name and **Application (client) ID**. Click the application name beside **Managed application in local directory** to open its **Enterprise application**, then copy the **Object ID** from that page. This is the **service-principal object ID**. If the link is absent, open **Microsoft Entra ID → Enterprise applications → All applications** and find the same Application ID.
+
+These details identify the pipeline's deployment identity. Keep them available for the following role assignments. The **Object ID on App registrations** identifies a different object from the **Object ID on Enterprise applications**. The human user IDs needed in section 4 come from **Entra ID → Users**, not either application page.
+
+**Manage service connection roles** opens the application's resource-group IAM page. **Manage App registration** opens the deployment app's Entra settings, including its API permissions. Pipeline authorization, Azure resource roles and Microsoft Graph permissions are three separate setup steps.
 
 [Microsoft's WIF setup guide](https://learn.microsoft.com/en-us/azure/devops/pipelines/release/configure-workload-identity) covers the automatic/manual setup screens. Copy current federation values from Azure DevOps rather than inventing an issuer URL.
 
 ### Azure IAM grants
 
-An administrator assigns the service principal these roles:
+Assign the following roles to the **deployment identity identified in step 3.5**. Use an account allowed to assign roles on these resource groups.
+
+1. In Azure portal, open **Resource groups → rg-oscal-scribe-test → Access control (IAM) → Role assignments**.
+2. Check whether the deployment application already has **Contributor**; the service connection wizard may have assigned it.
+3. For each missing role in the table, select **Add → Add role assignment**. Find the role (the **Privileged administrator roles** tab contains Contributor and Role Based Access Control Administrator), select it, then **Next**.
+4. Under **Members**, choose **User, group, or service principal → Select members**. Search using the deployment application's display name or **Application (client) ID**, select it and confirm.
+5. If the administrator role presents a **Conditions** page, this template requires permission to assign the roles used by Terraform within this resource group. Choose **Allow user to assign all roles except privileged administrator roles Owner, UAA, RBAC (Recommended)** at this resource-group scope; this template does not assign those three roles. Company administrators can instead design conditions covering the required runtime, publisher and deployment assignments.
+6. Select **Review + assign** and confirm the assignment. Repeat for the other missing role.
+7. Open **rg-oscal-scribe-state → Access control (IAM)** and repeat for its two roles.
+
+[Microsoft's role-assignment instructions](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) describe the portal screens.
 
 | Scope | Role | Why / duration |
 | --- | --- | --- |
@@ -65,28 +90,35 @@ An administrator assigns the service principal these roles:
 | State resource group | Contributor | Bootstrap creates/configures state storage; remove after successful bootstrap |
 | State resource group | Role Based Access Control Administrator | Bootstrap assigns container-scoped state access; remove after successful bootstrap |
 
-Bootstrap grants **Storage Blob Data Contributor on the `tfstate` container** to the connection's identity. This remains for state access and locking. No subscription Owner role, storage account key or persistent password is required.
+Backend setup automatically grants **Storage Blob Data Contributor** to this identity on the **tfstate storage container**. That permission lets future pipelines read, update and lock the Terraform deployment record. No manual assignment of this container permission is needed. Step 5.2 explains exactly which temporary resource-group roles to remove after bootstrap succeeds.
 
 Use separate, restricted pipelines and identities for infrastructure, code deployment and content publication when introducing company separation of duties. The supplied personal configuration intentionally uses one connection for ease of setup; restrict who can edit/queue its pipelines. Code deployment alone does not require directory write permissions.
 
 ### Entra permissions: a separate administrator step
 
-On the **deployment service connection's app registration**, add these **Microsoft Graph application permissions** and grant tenant administrator consent:
+1. In Azure DevOps, open **Project settings → Service connections → oscal-scribe-azure → Manage App registration**.
+2. In the Azure page, select **API permissions → Add a permission → Microsoft Graph → Application permissions**. Select **Application permissions** because the pipeline uses its own identity.
+3. Search for and tick each permission below, expanding its category if needed. Click **Add permissions**. You can add them one at a time by repeating step 2.
 
-- `Application.ReadWrite.OwnedBy`: manage the Scribe application/service principal owned by the deployment identity.
-- `Application.Read.All`: read the application/service-principal objects used by the provider and preflight.
-- `AppRoleAssignment.ReadWrite.All`: manage Scribe user-role assignments.
+   - `Application.ReadWrite.OwnedBy`: manage the Scribe application/service principal owned by the deployment identity.
+   - `Application.Read.All`: read the application/service-principal objects used by the provider and preflight.
+   - `AppRoleAssignment.ReadWrite.All`: manage Scribe user-role assignments.
+
+4. Back on **API permissions**, click **Grant admin consent for [tenant name]**, then confirm **Yes**.
+5. Verify all three entries show **Type: Application** and a green **Granted for [tenant name]** status. Adding permissions alone does not grant consent.
+
+If the consent button is unavailable or access is denied, a tenant **Privileged Role Administrator** or **Global Administrator** can grant this consent. Azure subscription Owner alone does not provide that Entra permission. See [Microsoft's consent requirements](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/grant-admin-consent).
 
 The last permission is powerful and directory-wide; it is not restricted by the Azure resource-group scope. The company tenant administrator must review it before deployment. Do not give these permissions to browser users or the Scribe frontend. [Terraform's app-role permission requirements](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/app_role_assignment) describe this boundary.
 
-The pipeline explicitly includes its service principal and your configured administrators as owners of the Scribe objects. Ownership does not depend on whichever person happens to run Terraform locally.
+The pipeline explicitly includes its service principal and your configured administrators as owners of the Scribe objects. The configured owners are applied consistently on every hosted deployment.
 
 ## 4. Enter environment settings privately in Azure DevOps
 
 1. Open `config/test.json` in GitHub and copy its JSON as a template. Do not commit your filled-in copy.
 2. In Azure DevOps, open **Pipelines → Library → + Variable group**. Name it **`oscal-scribe-test`**.
 3. Add one variable named **`scribeEnvironment`**. Paste the complete JSON into its value, replace the placeholder IDs, empty owner/Security lists, storage name and email with your values, then click the lock to mark it **secret** and Save. This JSON contains environment configuration, not a password; keeping it protected avoids publishing personal/company identifiers.
-4. Under **Pipeline permissions**, authorize only your Scribe pipelines. If you have not created them yet, return here after doing so. Set this group's `variableGroup` name consistently on every pipeline (the default is `oscal-scribe-test`).
+4. Open the variable group's **Pipeline permissions → + (Add pipeline)**. Add Backend setup, Build and deploy, Operations and Demo content using the names you saved in section 1; add Controlled content when needed. If they are absent, save the pipelines first and return here. Set this group's `variableGroup` name consistently on every pipeline (the default is `oscal-scribe-test`).
 
 All Azure tasks read this protected cloud configuration. `config/test.json` documents the shape and fails validation if used with its blank defaults. No downloaded secure file, private tfvars or local environment variable is needed.
 
@@ -105,20 +137,22 @@ All Azure tasks read this protected cloud configuration. `config/test.json` docu
 
 The proposed storage name must be globally available. If bootstrap reports it is taken, select a different name in the protected JSON **before the first deployment**. Once deployed, do not change backend identifiers casually: they identify the authoritative state, not just labels.
 
-The personal budget is **£35**, preserving the previous margin beneath the requested US$50 target. Exchange rates/taxes may change that relationship. Budgets alert rather than cap spending. The application budget does not include backend storage or Azure DevOps hosted capacity; review those separately in Cost Management.
+The template's `monthly_budget` value is **35 in the subscription's billing currency**. Set an amount appropriate to your subscription and spending target. Budgets alert rather than cap spending. The application budget does not include backend storage or Azure DevOps hosted capacity; review those separately in Cost Management.
 
 Keep real environment values in the protected variable group. Do not commit filled-in configuration, secrets, Terraform state or plan files.
 
 ## 5. Run the cloud bootstrap, then deploy
 
-1. Run **Scribe – Backend setup** with defaults. It creates a Standard LRS storage account, disables shared-key and anonymous blob access, enables versioning and 30-day blob/container deletion recovery, creates `tfstate`, and assigns state access. It does **not** deploy the application or use local Terraform state.
-2. Wait a few minutes for new role assignments to propagate. Remove the two temporary state-group management roles from the connection; retain its container data role.
-3. Run **Scribe – Build and deploy**, set **`deploy` to true**, and leave `serviceConnection` as `oscal-scribe-azure` and `configFile` as `config/test.json`.
+Leave `configFile` pointing at the checked-in template: the pipeline reads your actual settings from the Library variable **scribeEnvironment**. If a variable group is missing, check its name and save it in Library. For an authorization error, add the pipeline under the variable group's or service connection's **Pipeline permissions**. Resolve Backend setup failures before starting Build and deploy.
+
+1. Open **Pipelines → Scribe – Backend setup → Run pipeline**. Choose branch **main**, `serviceConnection: oscal-scribe-azure`, `configFile: config/test.json` and `variableGroup: oscal-scribe-test` (or your chosen group name). Click **Run** and watch **Create protected central Terraform backend**. Wait for a successful green result and the **Backend ready** message. This creates the state storage account, private `tfstate` container, version/deletion recovery settings and pipeline storage access. The application is deployed separately.
+2. After success, allow a few minutes for role assignments to propagate. Open **Azure portal → Resource groups → rg-oscal-scribe-state → Access control (IAM) → Role assignments**. Find the **deployment service connection's application**. Remove its **Contributor** and **Role Based Access Control Administrator** assignments on this state resource group: select each matching row, click **Remove**, and confirm. Backend setup has already given that identity **Storage Blob Data Contributor on the tfstate container**; keep that permission so future pipelines can read, update and lock the deployment record. No further action is needed for the container permission.
+3. When ready to deploy, re-enable processing of new run requests on **Scribe – Build and deploy**. Select **Run pipeline**, branch **main**, **`deploy: true`**, `serviceConnection: oscal-scribe-azure`, `configFile: config/test.json`, `variableGroup: oscal-scribe-test` and `environmentName: scribe-test`. Use your chosen names if they differ. Click **Run**.
 4. Build installs Node 22, selects Java 21, downloads/checks Terraform 1.11.4 and the pinned OSCAL CLI, restores locked dependencies, tests, and publishes a versioned application artifact.
 5. Plan initializes the Azure backend, generates every Terraform input from the protected cloud configuration and the federated identity, and publishes a saved plan. Review its log.
 6. If the plan changes infrastructure, the run pauses for **Manual validation**. Code-only updates skip this pause and deploy automatically. Approve only the intended resources/environment. The review times out to rejection. Restrict Queue builds/validation permissions and add service-connection approvals/checks for company use; the personal setup permits the requesting operator to approve.
 7. Deploy uses a fresh hosted agent to initialize the same backend, apply that saved plan, then deploy the **same application artifact built and tested earlier**. It does not rebuild on the deployment agent. Fresh WIF assertions are obtained through the Azure DevOps job endpoint; no laptop login cache is used.
-8. Open the URL printed by the deployment. Complete Microsoft sign-in with a configured Security user. The new deployment has new resource names/client IDs; the old URL is retired.
+8. Open the URL printed by the deployment. Complete Microsoft sign-in with a configured Security user. Use the URL and client ID produced by this deployment.
 
 The automatic smoke checks verify reachability and denial of anonymous/forged-header requests. They do not replace the first real user test: create, save, reopen and export an SSP; verify a normal user cannot see another user's unshared plan.
 
@@ -126,7 +160,7 @@ Cloud state is authoritative from the first run. Azure Pipelines plan artifacts 
 
 ## 6. Add demo data separately
 
-Run **Scribe – Demo content** after deployment. It downloads the pinned official SP800-53 catalog, resolves Low and Moderate (the requested “medium”) profiles with OSCAL CLI, creates the fictional company SOC component and publishes an immutable demo release into Cosmos. The release artifact is retained with the pipeline run.
+Run **Scribe – Demo content** after deployment. It downloads the pinned official SP800-53 catalog, resolves Low and Moderate profiles with OSCAL CLI, creates the fictional company SOC component and publishes an immutable demo release into Cosmos. The release artifact is retained with the pipeline run.
 
 This is never called by the normal deploy pipeline. The SOC contributes partial/shared implementation to AU-2, AU-6, AU-12, IR-4, IR-5, IR-6 and SI-4. It does not certify control compliance.
 
