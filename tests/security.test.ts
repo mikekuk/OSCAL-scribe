@@ -205,6 +205,7 @@ test("JWT trust boundary: signature, audience, tenant, scope, expiry and role ar
       .setExpirationTime("5m")
       .sign(privateKey);
   assert.deepEqual(await auth("Bearer " + (await token())), A);
+  assert.deepEqual((await auth("Bearer " + (await token({ roles: ["AppAdmin"] })))).roles, ["AppAdmin"]);
   await assert.rejects(auth(undefined));
   for (const p of [
     { tid: "wrong" },

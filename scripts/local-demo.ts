@@ -1,3 +1,4 @@
+import { MemoryAdminStore } from "../src/api/memory-admin";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { Service, ApiError } from "../src/api/service";
@@ -5,17 +6,18 @@ import { MemoryRepository } from "../src/api/memory";
 if (process.env.WEBSITE_INSTANCE_ID)
   throw Error("Local demo cannot run in Azure");
 const release = JSON.parse(await readFile("work/content-release.json", "utf8"));
-const service = new Service(new MemoryRepository(), {
+const repo = new MemoryRepository();
+const service = new Service(repo, {
   active: async () => release,
   get: async (id) => {
     if (id !== release.id) throw new ApiError(404, "Release not found");
     return release;
   },
-});
+}, new MemoryAdminStore(repo, release));
 const user = {
   oid: "11111111-1111-4111-8111-111111111111",
   tid: "22222222-2222-4222-8222-222222222222",
-  roles: ["User"],
+  roles: process.env.DEMO_APP_ADMIN === "true" ? ["AppAdmin"] : ["User"],
 };
 createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
@@ -28,7 +30,7 @@ createServer(async (req, res) => {
     let data = "";
     for await (const chunk of req) {
       data += chunk;
-      if (Buffer.byteLength(data) > 1000000)
+      if (Buffer.byteLength(data) > (user.roles.includes("AppAdmin") && req.url === "/api/admin/library" ? 20_001_000 : 1000000))
         throw new ApiError(413, "Too large");
     }
     const result = await service.request(

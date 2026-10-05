@@ -39,3 +39,11 @@ test('destroy is manually reviewed and demo is an independent opt-in pipeline',(
  const demo=readFileSync('pipelines/demo.yml','utf8');
  assert.match(demo,/trigger: none/);assert.match(demo,/allow_demo/);assert.match(demo,/ALLOW_DEMO_PUBLICATION=true/);
 });
+
+test('App Admin is a pipeline-managed role with separate assignments and scoped runtime writes', () => {
+  const identity = readFileSync('infrastructure/identity.tf','utf8');
+  assert.match(identity, /value\s*= "AppAdmin"/);
+  assert.match(identity, /for_each\s*= var.app_admin_user_ids/);
+  assert.match(identity, /display_name\s*= "App Admin"/);
+  assert.match(readFileSync('infrastructure/variables.tf','utf8'), /variable "app_admin_user_ids"/);
+});

@@ -26,6 +26,8 @@ resource "azurerm_cosmosdb_sql_container" "ssps" {
   indexing_policy {
     indexing_mode = "consistent"
     included_path { path = "/*" }
+    # Index only the plan title within the otherwise excluded OSCAL document.
+    included_path { path = "/oscal/\"system-security-plan\"/metadata/title/?" }
     excluded_path { path = "/oscal/*" }
   }
 }
@@ -50,10 +52,11 @@ resource "azurerm_cosmosdb_sql_role_assignment" "ssp" {
   scope               = "${azurerm_cosmosdb_account.main.id}/dbs/scribe/colls/ssps"
 }
 resource "azurerm_cosmosdb_sql_role_assignment" "content_reader" {
+  # Runtime library uploads/audits require write access; the API enforces AppAdmin.
   depends_on          = [azurerm_cosmosdb_sql_container.content]
   resource_group_name = data.azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main.name
-  role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001"
+  role_definition_id  = "${azurerm_cosmosdb_account.main.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
   principal_id        = azurerm_linux_function_app.api.identity[0].principal_id
   scope               = "${azurerm_cosmosdb_account.main.id}/dbs/scribe/colls/content"
 }

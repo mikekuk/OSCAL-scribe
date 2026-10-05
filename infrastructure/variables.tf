@@ -47,3 +47,9 @@ variable "deployment_object_id" {
   type        = string
   description = "Application package deployment identity, independent of content publisher."
 }
+
+variable "app_admin_user_ids" {
+  type        = set(string)
+  default     = []
+  description = "Target-tenant user object IDs assigned the separate, destructive App Admin application role."
+}

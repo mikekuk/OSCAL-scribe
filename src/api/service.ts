@@ -1,3 +1,4 @@
+import { AdminService, MAX_UPLOAD, type AdminStore } from "./admin";
 import { createHash, randomUUID } from "node:crypto";
 import { canRead, canEdit, canShare, canAttest, canAdminister } from "./authz";
 import { createSsp, integrity } from "../shared/oscal";
@@ -46,6 +47,7 @@ export class Service {
   constructor(
     public repo: Repository,
     public content: ContentStore,
+    public admin?: AdminStore,
   ) {}
   async request(
     user: User | undefined,
@@ -55,10 +57,10 @@ export class Service {
     match?: string,
   ): Promise<any> {
     if (!user) throw new ApiError(401, "Authentication required");
-    if (!user.roles.some((r) => ["User", "Security"].includes(r)))
+    if (!user.roles.some((r) => ["User", "Security", "AppAdmin"].includes(r)))
       throw new ApiError(403, "Application assignment required");
     try {
-      bounded(body);
+      bounded(body, user.roles.includes("AppAdmin") && /^\/?(?:api\/)?admin\/library\/?$/.test(path) ? MAX_UPLOAD + 1000 : 1_000_000);
     } catch (e) {
       throw new ApiError(413, (e as Error).message);
     }
@@ -66,6 +68,11 @@ export class Service {
       .replace(/^\/api\/?/, "")
       .split("/")
       .filter(Boolean);
+    if (p[0] === "admin") {
+      if (!user.roles.includes("AppAdmin")) throw new ApiError(403, "App Admin role required");
+      if (!this.admin) throw new ApiError(503, "Administration storage is unavailable");
+      return new AdminService(this.repo, this.admin).request(user, method, p.slice(1), body);
+    }
     if (p[0] === "me" && method === "GET") return user;
     if (p[0] === "content" && method === "GET") {
       const release = p[1]
@@ -91,7 +98,7 @@ export class Service {
     if (p[0] !== "ssps") throw new ApiError(404, "Not found");
     if (!p[1]) {
       if (method === "GET")
-        return (await this.repo.list(user)).map((s) => ({
+        return (await this.repo.list(user)).filter(s => !s.deleting).map((s) => ({
           ...s,
           oscal: undefined,
           title: s.oscal["system-security-plan"].metadata.title,

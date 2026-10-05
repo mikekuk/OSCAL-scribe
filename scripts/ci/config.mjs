@@ -9,7 +9,8 @@ export function validateConfig(c) {
   if (!/^[a-z0-9]{3,24}$/.test(c.state_storage_account)) throw Error('Invalid state storage account');
   if (!/^[a-zA-Z0-9_.-]+\.tfstate$/.test(c.state_key)) throw Error('Invalid state key');
   for (const k of ['location','web_location','prefix','environment']) if (!/^[a-z][a-z0-9-]{1,29}$/.test(c[k])) throw Error(`Invalid ${k}`);
-  for (const k of ['owner_object_ids','security_user_ids','user_ids']) if (!Array.isArray(c[k]) || c[k].some(v => !guid.test(v))) throw Error(`Invalid ${k}`);
+  c.app_admin_user_ids ??= [];
+  for (const k of ['app_admin_user_ids','owner_object_ids','security_user_ids','user_ids']) if (!Array.isArray(c[k]) || c[k].some(v => !guid.test(v))) throw Error(`Invalid ${k}`);
   if (!c.owner_object_ids.length || !c.security_user_ids.length) throw Error('Set at least one owner and Security user');
   if (c.publisher_object_id !== '' && !guid.test(c.publisher_object_id)) throw Error('Invalid publisher identity');
   if (!(Number.isFinite(c.monthly_budget) && c.monthly_budget > 0)) throw Error('Set a positive budget in subscription billing currency');
@@ -25,7 +26,7 @@ export function loadConfig(file = process.env.SCRIBE_CONFIG || 'config/test.json
 }
 export function terraformVariables(c, pipelineObjectId) {
   if (!guid.test(pipelineObjectId)) throw Error('Invalid pipeline object ID');
-  const keys = ['subscription_id','tenant_id','resource_group_name','web_location','prefix','environment','security_user_ids','user_ids','monthly_budget','budget_email','budget_start'];
+  const keys = ['subscription_id','tenant_id','resource_group_name','web_location','prefix','environment','security_user_ids','user_ids','app_admin_user_ids','monthly_budget','budget_email','budget_start'];
   return {...Object.fromEntries(keys.map(k => [k,c[k]])),
     owner_object_ids: [...new Set([...c.owner_object_ids,pipelineObjectId])],
     deployment_object_id: pipelineObjectId,

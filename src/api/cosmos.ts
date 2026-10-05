@@ -12,7 +12,7 @@ import type {
   ContentStore,
   Release,
 } from "../shared/types";
-import { security } from "./authz";
+import { security, appAdmin } from "./authz";
 import { ApiError, hash } from "./service";
 export const cosmos = () =>
   new CosmosClient({
@@ -30,7 +30,7 @@ export class CosmosRepository implements Repository {
     }
   }
   async list(u: User) {
-    const query = security(u)
+    const query = (security(u) || appAdmin(u))
       ? 'SELECT * FROM c WHERE c.id = "current" AND c.tenantId = @tid'
       : 'SELECT * FROM c WHERE c.id = "current" AND c.tenantId = @tid AND (c.ownerId = @oid OR EXISTS(SELECT VALUE a FROM a IN c.access WHERE a.oid = @oid))';
     const { resources } = await this.container.items
@@ -38,11 +38,23 @@ export class CosmosRepository implements Repository {
         query,
         parameters: [
           { name: "@tid", value: u.tid },
-          ...(!security(u) ? [{ name: "@oid", value: u.oid }] : []),
+          ...(!(security(u) || appAdmin(u)) ? [{ name: "@oid", value: u.oid }] : []),
         ],
       })
       .fetchAll();
-    return resources;
+    return resources.filter(s => !s.deleting || appAdmin(u));
+  }
+  async adminPage(user: User, query: string, state: string, cursor?: string) {
+    const clauses = ['c.id = "current"', 'c.tenantId = @tenant'];
+    if (query) clauses.push('(CONTAINS(c.oscal["system-security-plan"].metadata.title, @query, true) OR CONTAINS(c.sspId, @query, true))');
+    if (state === "archived") clauses.push('c.archived = true');
+    if (state === "active") clauses.push('c.archived = false AND (NOT IS_DEFINED(c.deleting) OR c.deleting = false)');
+    if (state === "deleting") clauses.push('c.deleting = true');
+    const result = await this.container.items.query<Json>({
+      query: 'SELECT c.sspId, c.version, c.archived, c.deleting, c.modifiedAt, c.oscal["system-security-plan"].metadata.title AS title FROM c WHERE ' + clauses.join(' AND ') + ' ORDER BY c.sspId',
+      parameters: [{ name: "@tenant", value: user.tid }, ...(query ? [{ name: "@query", value: query.toLowerCase() }] : [])],
+    }, { maxItemCount: 25, continuationToken: cursor }).fetchNext();
+    return { items: result.resources, cursor: result.continuationToken || undefined };
   }
   async create(s: Ssp, r: Json, a: Json) {
     await this.batch(
@@ -79,6 +91,29 @@ export class CosmosRepository implements Repository {
         throw new ApiError(409, "Concurrent update; reload");
       throw new ApiError(503, "Persistence unavailable");
     }
+  }
+
+  /** Freeze the current record with its ETag before deleting history. All normal
+   * writes now fail their original ETag, and new reads cannot edit the tombstone.
+   * Keep current until the end so an interrupted purge can be retried by an admin. */
+  async purge(previous: Ssp) {
+    let frozen = previous;
+    if (!previous.deleting) {
+      const { _etag, ...clean } = previous;
+      await this.batch(previous.sspId, [{ operationType: "Replace", id: "current", ifMatch: _etag,
+        resourceBody: JSON.parse(JSON.stringify({ ...clean, deleting: true, version: previous.version + 1 })) }]);
+      frozen = (await this.get(previous.sspId))!;
+    }
+    while (true) {
+      const { resources } = await this.container.items.query<Json>({
+        query: 'SELECT TOP 99 c.id FROM c WHERE c.sspId = @id AND c.id != "current"',
+        parameters: [{ name: "@id", value: previous.sspId }],
+      }, { partitionKey: previous.sspId }).fetchAll();
+      if (!resources.length) break;
+      await this.batch(previous.sspId, resources.map(r => ({ operationType: "Delete", id: r.id })));
+    }
+    try { await this.container.item("current", previous.sspId).delete({ accessCondition: { type: "IfMatch", condition: frozen._etag! } }); }
+    catch (e: any) { if (e.code === 404) return; if (e.code === 412) throw new ApiError(409, "Deletion changed; reload and retry"); throw e; }
   }
 
   async records(id: string, prefix: string) {

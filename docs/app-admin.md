@@ -1,0 +1,55 @@
+# App Admin and managed content
+
+App Admin is Scribe's privileged application role, token value `AppAdmin`. It is distinct from the Security role and from Microsoft Entra's built-in administrator roles. It includes tenant-wide SSP access plus the Administration screen: read-only raw Cosmos exploration, permanent SSP deletion, and upload/deletion/export of staged OSCAL catalogs, profiles and component definitions. Owners and Security users retain their existing permissions but cannot use these admin endpoints. All checks run on the API; hiding a button is not the authorization boundary.
+
+## Set up through the pipelines
+
+1. Merge the application and Terraform changes. The existing **Build and deploy** pipeline defines the App Admin role on the app registration, exposes it through the existing Enterprise application, and deploys the protected API/UI. Do not create the role or assignments with Azure CLI or manually in the portal.
+2. In Azure DevOps **Pipelines → Library**, edit the environment's protected `scribeEnvironment` JSON. Add `"app_admin_user_ids": ["<TARGET-TENANT-USER-OBJECT-ID>"]`. Keep all other configuration fields. An omitted list defaults to empty; existing User/Security users are never promoted automatically. Use Entra user object IDs, not client/application IDs or email addresses. Keep this list narrow.
+3. Queue **Build and deploy** using the existing federated service connection. Review the Terraform plan and approve its normal infrastructure gate. The plan adds the App Admin role and explicit `azuread_app_role_assignment.app_admins` entries. The Function managed identity changes from Data Reader to Data Contributor on the **content container only**, because the API now stores library uploads and separate admin audit events there. SSP container permissions are unchanged. Browser users receive no Cosmos credentials or Azure resource roles.
+4. After a successful apply/deploy, inspect the existing Enterprise application's **Users and groups** to verify App Admin assignments. Sign out/in to obtain a fresh delegated access token and check for **Administration** in the app header. A signed-in App Admin can open this area even before an approved release exists.
+5. Revoke access by removing IDs from `app_admin_user_ids` and rerunning the pipeline. Other User/Security assignments remain independent. Already-issued tokens retain role claims until expiry; application-role removal is not instant token revocation.
+
+Role assignments are separate from the roles in an SSP's People & Roles page. See Microsoft's [app role assignment guidance](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/assign-user-or-group-access-portal). The pipeline's existing Entra deployment permissions already cover application roles and assignments; no new deployment identity or secret is required.
+
+## Raw Cosmos explorer
+
+Administration has separate **Plans**, **Content library**, and **Raw storage** views. App Admin opens directly into this paged workspace, avoiding the ordinary unpaged plan list. Plans support server-side title/ID search, Active/Archived/Deleting filters, and pages of at most 25 summary records. Content partitions use server-side search and 25-item pages. Cosmos continuation tokens support the [ordered DISTINCT partition query](https://learn.microsoft.com/cosmos-db/query/pagination). A targeted title index supports the plan filter while the rest of the OSCAL body stays excluded from indexing. Raw records support ID filtering and pages of at most ten records. Previous/Next retain the query’s cursor history; changing filters starts at page one. The library’s bounded metadata registry is searched by title/path/UUID and model type, with 25 rows per page; source documents load only when inspected.
+
+Select **Inspect JSON** to open a read-only side panel. Its preview is capped at 100,000 characters, searches the full selected document, and offers a full JSON download. A **References** action shows both dependency and dependent paths without opening the entire file. Upload is tucked behind a disclosure panel. It reads only Scribe's fixed `ssps` and `content` containers; it does not accept SQL, arbitrary databases, or container names. SSP access is tenant checked. JSON is displayed as escaped text and cannot be edited or deleted through the raw viewer.
+
+Content includes immutable release manifests/chunks, the `index` active-release pointer, the `library` registry, `asset:<UUID>` upload manifests/chunks, and `admin-audit` events. Published JSON is stored in base64 chunks; staged documents also have a decoded **Inspect** action. The library registry records file path, OSCAL UUID, source hash, size, uploader, upload time and dependency paths. Application Insights records request failures without logging uploaded content.
+
+## Permanently delete an SSP
+
+In Administration choose **Permanently delete** and type the exact SSP ID. The API requires both that confirmation and the current version. Deletion removes the `current` record and every revision, attestation and per-plan audit record in that SSP partition. Active and archived plans are eligible. There is no in-app undo.
+
+The API first marks the current record as deleting using its ETag. Normal readers/editors can no longer access it; stale writes fail. It removes history in batches of at most 99 records, then removes current last. If a request fails partway through, the admin list shows **deletion in progress** and **Retry deletion**; retry uses its newly loaded version. This supports plans larger than Cosmos's [100-operation transactional batch limit](https://learn.microsoft.com/en-us/azure/cosmos-db/transactional-batch) without reopening a partially deleted plan for editing.
+
+A separate admin audit retains actor, tenant, target ID and requested/completed times, not the deleted SSP body. Deleting a plan never deletes its referenced published release. Scribe has no application-managed SSP-to-SSP foreign keys; arbitrary external links to a deleted plan cannot be repaired automatically. Infrastructure backup/retention policies remain separate from in-app deletion.
+
+## Upload and reference rules
+
+Upload an OSCAL JSON **catalog**, **profile**, or **component-definition** and supply a portable relative path such as `catalogs/company.json`. All uploads pass the pinned OSCAL schema before admission. The staged library is intentionally bounded; published release/history storage is browsed separately through server-side paging. Limits are 20 MB per document, 50 MB per library, 500 documents, plus bounded dependency metadata. Existing paths and OSCAL UUIDs cannot be overwritten: use a new version with a new path/UUID, or delete an unreferenced staged file first. `manifest.json` is reserved for the publication manifest.
+
+References are determined from profile `imports[].href` and component/capability `control-implementations[].source`, and `import-component-definitions[].href`. Profile imports and implementation sources target catalogs/profiles; component-definition imports target other component definitions. They resolve relative to the uploading file's directory. A `#resource-uuid` reference must resolve through back matter to exactly one relative `rlink`; embedded base64 import resources are not supported in the library. The app never fetches remote URLs. Absolute paths, external URL/URN imports, encoded paths and traversal outside the library are rejected. Ordinary explanatory hyperlinks are not dependency edges and are not fetched.
+
+Files may be uploaded before their dependencies. The library displays missing references and incorrect target model types; either blocks publication export. Uploads that introduce an import cycle are rejected, so dependency-protected deletions cannot become trapped in a cycle. Upload catalogs first, then profiles, then components for the clearest workflow. Deleting a file is blocked while any other library document directly references it, including a reference through a back-matter resource. Remove dependents first. One shared registry ETag serializes changes so a concurrent upload/deletion cannot silently overwrite a dependency decision.
+
+Chunks are written before a file is added to the registry; registry removal precedes chunk deletion. A transient error can leave unlisted `asset:` chunks. They never become selectable content and are visible in the raw explorer for investigation. The API does not expose arbitrary raw deletion to clean them up. A retry after a registry conflict must reload the library; deleting a committed library entry uses the typed file path and current library version.
+
+## Publish staged files
+
+Uploads do **not** become immediately available to new SSPs. Existing published releases and the active pointer cannot be edited or deleted from the browser.
+
+1. Resolve every library reference and include at least one profile. Choose **Export for publication** to download `oscal-library-bundle.json`, containing the source files and provenance.
+2. From the Scribe checkout, run `node --import tsx scripts/import-library-bundle.ts <bundle.json> <new-output-directory>`. The output directory must not already exist, and its parent must exist. The importer checks schemas, paths, UUID uniqueness and references again, then writes individual JSON sources and `manifest.json`. Profile IDs use the profile OSCAL UUID, avoiding title/name collisions. This is a local preparation step, not an Azure command.
+3. Review and commit those files into the **ControlledOSCAL** repository (or the configured equivalent), preserving their relative paths. Keep the export provenance in the generated manifest. The manifest marks this controlled content as `demo: false`; review source suitability before publication.
+4. Run **Scribe – Controlled content** (`pipelines/content.yml`) against the reviewed repository/ref. The pipeline stages imports locally, validates and resolves profiles with the pinned OSCAL CLI, validates the complete release, and publishes immutable hashed chunks. It moves the active pointer only after the release is complete. Schema/reference validity is not a compliance or effectiveness decision.
+5. New SSPs use the newly active release. Existing SSPs remain pinned to their original release and source snapshot; deleting a staged upload does not delete those historical copies. To withdraw a catalog/profile/component from future plans, publish a replacement release that omits it and its dependents. Historical published releases are retained, so pinned SSP references remain resolvable. This change does not add a published-release purge operation.
+
+The built-in demo content remains a separate opt-in pipeline; the staged-library workflow does not automatically republish or overwrite it.
+
+## Local verification
+
+For the explicit loopback-only demo, run `DEMO_APP_ADMIN=true npm run demo` to exercise Administration against in-memory records. The default demo remains User. This flag has no effect on production authentication or Azure assignments. Restarting that demo clears its test library and SSPs.

@@ -223,3 +223,7 @@ No personal state, generated file, subscription permission, login cache or lapto
 | Sign-in succeeds but access denied | Check Scribe Enterprise app assignment and the target-tenant user object ID |
 
 Terraform/Node/Java versions and locked providers are explicit. Hosted image patch revisions and external service behavior can still change. End-to-end Azure DevOps acceptance requires the first real hosted run; local/static checks do not prove tenant permissions or cloud deployment success.
+
+## App Admin rollout
+
+The new App Admin role and optional `app_admin_user_ids` assignments are created by Terraform in Build and deploy, never by ad-hoc Azure CLI commands. Review its content-container runtime write permission in the infrastructure plan. Follow [App Admin setup and publication](app-admin.md) for configuration, sign-in refresh, raw data access, deletion and reference handling.
