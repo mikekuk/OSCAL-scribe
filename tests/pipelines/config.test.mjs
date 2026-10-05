@@ -36,3 +36,9 @@ test('private cloud configuration overrides the intentionally incomplete public 
   assert.deepEqual(loadConfig('config/test.json'),config);
  } finally {if(old===undefined)delete process.env.SCRIBE_ENVIRONMENT_JSON;else process.env.SCRIBE_ENVIRONMENT_JSON=old;}
 });
+
+test('App Admin assignments are explicit, validated and forwarded to Terraform', () => {
+  assert.deepEqual(terraformVariables(config, identity).app_admin_user_ids, []);
+  assert.deepEqual(terraformVariables(validateConfig({...config, app_admin_user_ids:[identity]}), identity).app_admin_user_ids, [identity]);
+  assert.throws(() => validateConfig({...config, app_admin_user_ids:['invalid']}), /app_admin_user_ids/);
+});

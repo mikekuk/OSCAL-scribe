@@ -33,7 +33,7 @@ export function authenticator(
     const roles = Array.isArray(p.roles)
       ? p.roles.filter((r): r is string => typeof r === "string")
       : [];
-    if (!roles.some((r) => ["User", "Security"].includes(r)))
+    if (!roles.some((r) => ["User", "Security", "AppAdmin"].includes(r)))
       throw Error("Application assignment required");
     return { oid: p.oid, tid: tenantId, roles };
   };

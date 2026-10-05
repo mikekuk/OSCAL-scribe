@@ -1,3 +1,5 @@
+import { CosmosAdminStore } from "./cosmos-admin";
+import { MAX_UPLOAD } from "./admin";
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
 import { authenticator } from "./auth";
 import { Service, ApiError } from "./service";
@@ -7,13 +9,14 @@ const client = cosmos(),
 const service = new Service(
   new CosmosRepository(db.container("ssps")),
   new CosmosContent(db.container("content")),
+  new CosmosAdminStore(db),
 );
 const auth = authenticator(
   process.env.ENTRA_TENANT_ID!,
   process.env.ENTRA_CLIENT_ID!,
 );
 app.http("api", {
-  methods: ["GET", "POST", "PUT"],
+  methods: ["GET", "POST", "PUT", "DELETE"],
   route: "{*path}",
   authLevel: "anonymous",
   handler: async (req: HttpRequest, context: InvocationContext) => {
@@ -39,7 +42,7 @@ app.http("api", {
           const { value, done } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > 1_000_000) {
+          if (size > (user.roles.includes("AppAdmin") && /\/admin\/library\/?$/.test(new URL(req.url).pathname) ? MAX_UPLOAD + 1000 : 1_000_000)) {
             await reader.cancel();
             throw new ApiError(413, "Request too large");
           }

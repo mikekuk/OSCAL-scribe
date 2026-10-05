@@ -1,8 +1,9 @@
 import type { User, Ssp } from "../shared/types";
+export const appAdmin = (u: User) => u.roles.includes("AppAdmin");
 export const security = (u: User) => u.roles.includes("Security");
-const tenant = (u: User, s: Ssp) => u.tid === s.tenantId;
+const tenant = (u: User, s: Ssp) => u.tid === s.tenantId && !s.deleting;
 export const canAdminister = (u: User, s: Ssp) =>
-  tenant(u, s) && (security(u) || s.ownerId === u.oid);
+  tenant(u, s) && (security(u) || appAdmin(u) || s.ownerId === u.oid);
 export const canRead = (u: User, s: Ssp) =>
   tenant(u, s) &&
   (canAdminister(u, s) || s.access.some((a) => a.oid === u.oid));

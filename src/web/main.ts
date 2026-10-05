@@ -1,3 +1,4 @@
+import { showAdmin } from "./admin-view";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { escapeHtml as h } from "../shared/lens/views.mjs";
 import { flatten, preview } from "../shared/lens/engine.mjs";
@@ -67,10 +68,10 @@ const editable = () =>
   current &&
   !current.archived &&
   (current.ownerId === user.oid ||
-    user.roles.includes("Security") ||
+    (user.roles.includes("Security") || user.roles.includes("AppAdmin")) ||
     current.access.some((a) => a.oid === user.oid && a.permission === "edit"));
 const administer = () =>
-  current && (current.ownerId === user.oid || user.roles.includes("Security"));
+  current && (current.ownerId === user.oid || (user.roles.includes("Security") || user.roles.includes("AppAdmin")));
 function pathValue(path: string) {
   return path.split("/").reduce((o, k) => o?.[k], body());
 }
@@ -88,7 +89,12 @@ function info(label: string, value: any) {
   return `<div><small>${h(label)}</small><p>${h(value ?? "—")}</p></div>`;
 }
 function layout(content: string) {
-  app.innerHTML = `<header><a href="#" id="home"><span class="logo">S</span> OSCAL <b>Scribe</b></a><span class="header-note">SECURITY PLANNING WORKSPACE</span><span>${demo ? "LOCAL DEMO · NOT SAVED" : h(user?.oid?.slice(0, 8) || "")} ${msal ? '<button id="logout" class="quiet">Sign out</button>' : ""}</span></header>${demo ? '<div class="demo">Fictional test environment. Data is held in memory and clears when the demo server restarts.</div>' : ""}<main>${content}</main><div id="message" role="status" aria-live="polite"></div>`;
+  app.innerHTML = `<header><a href="#" id="home"><span class="logo">S</span> OSCAL <b>Scribe</b></a><span class="header-note">SECURITY PLANNING WORKSPACE</span><span>${demo ? "LOCAL DEMO · NOT SAVED" : h(user?.oid?.slice(0, 8) || "")} ${user?.roles.includes("AppAdmin") ? '<button id="admin" class="quiet">Administration</button>' : ""} ${msal ? '<button id="logout" class="quiet">Sign out</button>' : ""}</span></header>${demo ? '<div class="demo">Fictional test environment. Data is held in memory and clears when the demo server restarts.</div>' : ""}<main>${content}</main><div id="message" role="status" aria-live="polite"></div>`;
+  document.querySelector("#admin")?.addEventListener("click", () => void run(async () => {
+    if (dirty && !confirm("Discard unsaved changes?")) return;
+    current = undefined; dirty = false;
+    await showAdmin(api, layout, run, download, { open, create: newAdminPlan });
+  }));
   document.querySelector("#home")?.addEventListener("click", (e) => {
     e.preventDefault();
     void run(home);
@@ -109,10 +115,18 @@ async function run(fn: () => Promise<any> | void) {
     message((e as Error).message, true);
   }
 }
+async function newAdminPlan() {
+  approved = await api("content");
+  list = []; current = undefined; dirty = false;
+  renderHome();
+  document.querySelector<HTMLElement>("#new-form")!.hidden = false;
+  document.querySelector<HTMLInputElement>("#system-name")!.focus();
+}
 async function home() {
   if (dirty && !confirm("Discard unsaved changes?")) return;
   current = undefined;
   dirty = false;
+  if (user.roles.includes("AppAdmin")) { await showAdmin(api, layout, run, download, { open, create: newAdminPlan }); return; }
   list = await api("ssps");
   approved = await api("content");
   renderHome();
@@ -571,8 +585,11 @@ function download(name: string, data: any) {
     a = document.createElement("a");
   a.href = url;
   a.download = name;
+  document.body.append(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Give the browser time to begin reading the Blob before releasing its URL.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 window.addEventListener("beforeunload", (e) => {
   if (dirty) e.preventDefault();

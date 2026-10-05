@@ -21,6 +21,7 @@ export interface Ssp {
   currentRevision: number;
   version: number;
   archived: boolean;
+  deleting?: boolean;
   releaseId: string;
   profileId: string;
   oscal: Json;
@@ -66,4 +67,6 @@ export interface Repository {
   create(ssp: Ssp, revision: Revision, audit: Json): Promise<void>;
   commit(previous: Ssp, next: Ssp, records: Json[]): Promise<void>;
   records(id: string, prefix: string): Promise<Json[]>;
+  purge(ssp: Ssp): Promise<void>;
+  adminPage(user: User, query: string, state: string, cursor?: string): Promise<{ items: Json[]; cursor?: string }>;
 }

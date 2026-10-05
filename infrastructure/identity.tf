@@ -32,6 +32,14 @@ resource "azuread_application" "scribe" {
     value                = "Security"
     enabled              = true
   }
+  app_role {
+    id                   = "6f2c44dc-96c4-4b5e-a46f-d2e8c654e721"
+    allowed_member_types = ["User"]
+    display_name         = "App Admin"
+    description          = "Explore Scribe storage, permanently delete SSPs and manage staged OSCAL content."
+    value                = "AppAdmin"
+    enabled              = true
+  }
 }
 resource "azuread_application_identifier_uri" "api" {
   application_id = azuread_application.scribe.id
@@ -59,6 +67,14 @@ resource "azuread_app_role_assignment" "security" {
 resource "azuread_app_role_assignment" "users" {
   for_each            = var.user_ids
   app_role_id         = "c7e1cb24-e405-44a0-bedd-b138ee933377"
+  principal_object_id = each.value
+  resource_object_id  = azuread_service_principal.scribe.object_id
+}
+
+# Kept separate from Security: no existing user receives destructive rights implicitly.
+resource "azuread_app_role_assignment" "app_admins" {
+  for_each            = var.app_admin_user_ids
+  app_role_id         = "6f2c44dc-96c4-4b5e-a46f-d2e8c654e721"
   principal_object_id = each.value
   resource_object_id  = azuread_service_principal.scribe.object_id
 }

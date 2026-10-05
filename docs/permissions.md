@@ -19,7 +19,7 @@ Application/client IDs and tenant/user object IDs are configuration, not passwor
 
 | Layer | Managed where | What it controls |
 | --- | --- | --- |
-| Permission to enter Scribe | Enterprise application → Users and groups; Terraform `identity.tf` | Whether an Entra user is assigned `Scribe User` or `Security`. |
+| Permission to enter Scribe | Enterprise application → Users and groups; Terraform `identity.tf` | Whether an Entra user is assigned `Scribe User`, `Security` or `App Admin`. |
 | Permission to a particular SSP | Scribe → plan → Overview → Sharing | Read/edit grants stored against immutable target-tenant user object IDs. Owner and Security users administer plans. |
 | People accountable for the system | Scribe → People & Roles | Four defaults: System Security Officer, Senior Risk Owner, Security Architect and SSP Preparer. Users may rename, add or delete any role, including SSO and SRO. These OSCAL document assignments grant no application access. |
 | Azure deployment/data access | Azure IAM, Cosmos data RBAC and Terraform | What operators, the Function managed identity and content publishers can do to infrastructure/data. These do not automatically grant Scribe user access. |
@@ -30,6 +30,7 @@ Application/client IDs and tenant/user object IDs are configuration, not passwor
 | --- | --- | --- |
 | Scribe User | `User` | Can create plans. Can access owned plans and plans explicitly shared with their object ID. |
 | Security | `Security` | Can access and administer all plans in this deployment's tenant. This is an application role, not Microsoft Entra's built-in Security Administrator role. |
+| App Admin | `AppAdmin` | Tenant-wide SSP access, raw storage exploration, permanent SSP deletion and staged content administration. Assigned only through the pipeline-managed `app_admin_user_ids` list. |
 | No role | None | Cannot use the Scribe API, even if the public homepage is visible or Microsoft sign-in succeeds elsewhere. |
 
 The API checks the token signature, issuer, audience, tenant, required claims, delegated `access_as_user` scope and one of the expected roles. It does not trust browser-supplied identity headers. The frontend is a public SPA using authorization code + PKCE; it has **no client secret**. A single app registration defines both the SPA and its API scope. Terraform preauthorizes the SPA for that scope; tenant consent policy can still require an administrator's action.
@@ -47,7 +48,7 @@ After the user passes the Entra/app-role checks:
 
 Archived plans cannot be edited or attested. History uses the current plan's access rules, so an old revision URL does not bypass revocation. The server returns not-found for inaccessible plan reads rather than exposing their existence. A Security user remains able to access a plan even after a per-plan sharing entry is removed.
 
-Attestation records the authorized actor, a declared system role, saved revision and digest. It is not a cryptographic personal signature, and typing someone into People & Roles neither logs them in nor grants them permission to attest. The current authorization gate is owner/Security; it does not require the chosen fictional/document role to be mapped to that user's Entra object ID.
+Attestation records the authorized actor, a declared system role, saved revision and digest. It is not a cryptographic personal signature, and typing someone into People & Roles neither logs them in nor grants them permission to attest. The current authorization gate is owner/Security/AppAdmin; it does not require the chosen fictional/document role to be mapped to that user's Entra object ID.
 
 ## Add, change or remove access
 
@@ -66,13 +67,13 @@ Open **Azure DevOps → Pipelines → Library → your environment's variable gr
 
 This shows only the access fields; preserve the other fields in the complete configuration.
 
-Edit `security_user_ids` or `user_ids` in the protected `scribeEnvironment` JSON and manually run Build and deploy. The main Azure DevOps pipeline plans the access changes and pauses for review before applying them. To revoke a Terraform-managed assignment, remove the object ID from the relevant list. Assign only one intended role; if a person has both, Security wins.
+Edit `security_user_ids` or `user_ids` in the protected `scribeEnvironment` JSON and manually run Build and deploy. The main Azure DevOps pipeline plans the access changes and pauses for review before applying them. To revoke a Terraform-managed assignment, remove the object ID from the relevant list. Prefer one intended role; permissions are additive, and AppAdmin grants the additional destructive administration rights.
 
 This template assigns individual users. Group-based Enterprise app assignment is an optional company extension, subject to Entra licensing and group membership rules; there is currently no dedicated group-assignment variable or group-based SSP sharing mechanism in Scribe.
 
 ### Portal administration
 
-An authorized administrator can use **Enterprise application → Users and groups → Add user/group → select user → Select a role → Scribe User or Security → Assign**. See Microsoft's [assignment procedure and prerequisites](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/assign-user-or-group-access-portal). Do not assign an unspecified Default Access role; the API expects `User` or `Security`.
+An authorized administrator can use **Enterprise application → Users and groups → Add user/group → select user → Select a role → Scribe User or Security → Assign**. See Microsoft's [assignment procedure and prerequisites](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/assign-user-or-group-access-portal). Do not assign an unspecified Default Access role; the API accepts `User`, `Security` or `AppAdmin`. App Admin must use the pipeline-managed assignment process below.
 
 Choose one source of truth. If you remove a Terraform-managed assignment only in the portal, a later Terraform apply can recreate it. A portal-only assignment is not automatically imported into Terraform, and an empty Terraform user set does not revoke every unmanaged assignment. Reconcile portal additions/removals with the configuration/state or document the separately administered population.
 
@@ -89,7 +90,7 @@ Once assigned, have the user sign out/in to obtain fresh role claims. For a Scri
 | Identity | Current template grants / required capability | Not granted automatically |
 | --- | --- | --- |
 | Bootstrap/infrastructure operator | Must already be able to create resources and role assignments in the target Azure scope, and manage the target Entra app/service principal/user assignments. | Azure Owner does not confer Entra directory administration; Entra admin does not confer subscription permissions. |
-| Function App system-assigned managed identity | Cosmos Data Contributor scoped to `scribe/ssps`; Cosmos Data Reader scoped to `scribe/content`; runtime storage roles on this deployment's storage account. | Cannot publish controlled content. Browser users never receive its credentials or Cosmos keys. |
+| Function App system-assigned managed identity | Cosmos Data Contributor scoped to `scribe/ssps`; Cosmos Data Contributor scoped to `scribe/content`; runtime storage roles on this deployment's storage account. | The API exposes staged library management, not release publication. Browser users never receive its credentials or Cosmos keys. |
 | `publisher_object_id` | Cosmos Data Contributor scoped to `scribe/content`; No package-upload role; content publication is separate. | No SSP-container data grant and no permission to change Function/SWA settings from this grant. |
 | Application deployment operator/job | Needs package blob upload, Function configuration/restart, SWA deployment-token retrieval and access to Terraform outputs/state. Azure Contributor at the app resource-group scope covers management operations; blob **data** access must also be assigned. | The deployment script does not grant these permissions to itself. |
 | Scribe end user | Enterprise app role plus plan permissions. | Does not need Azure portal, subscription IAM or direct Cosmos access. |
@@ -104,7 +105,7 @@ The supplied personal configuration uses the pipeline service principal as conte
 | --- | --- |
 | Cannot find Enterprise app | Correct tenant; All applications; cleared filters; exact name/client ID. Verify with `az ad sp show`. |
 | Assigned in Azure IAM but cannot use Scribe | IAM is not the Scribe Enterprise app assignment. Assign the appropriate app role. |
-| Microsoft sign-in reports assignment required | Assign the target-tenant user to Scribe User or Security on the correct Enterprise app. |
+| Microsoft sign-in reports assignment required | Check the target-tenant User, Security or pipeline-managed App Admin assignment on the correct Enterprise app. |
 | Admin approval required | Ask the tenant administrator to review/consent to the Scribe delegated scope; do not disable assignment or token validation to bypass policy. |
 | App opens but an existing plan is missing | User has app entry but lacks ownership/sharing, or is in the wrong deployment. Check immutable object IDs. |
 | Added a person under People & Roles, but they cannot sign in | Those fields are documentation only. Assign their Entra app role and, when needed, share the plan. |
@@ -117,3 +118,7 @@ Read [the deployment runbook](deployment.md) before deleting or moving the envir
 In **People & Roles**, enter a name and choose **Add role**. Edit a role name in its card or use its **×** button to delete it. All four defaults, including System Security Officer and Senior Risk Owner, can be removed. Deleting a role clears references to it in the current SSP; shared person records and saved historical revisions remain intact. Assign a person to every remaining role before attestation. At least one defined, assigned role is needed to attest, and the selected attesting role must exist in the saved revision.
 
 See [the control workspace guide](control-workspace.md) for section status and shared-component completion.
+
+## App Admin setup
+
+Use the pipeline-managed role and assignment process in [App Admin and managed content](app-admin.md). It also documents permanent deletion, raw exploration, staged uploads, reference checks and publication. Existing Security assignments do not grant App Admin.
