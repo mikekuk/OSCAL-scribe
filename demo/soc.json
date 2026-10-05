@@ -1,0 +1,64 @@
+{
+  "component-definition": {
+    "uuid": "619ea8ee-ea92-4e27-b96b-db1382293c84",
+    "metadata": {
+      "title": "Fictional Company SOC \u2014 worked implementation examples \u2014 DEMO ONLY",
+      "version": "2.0.0",
+      "oscal-version": "1.2.2",
+      "last-modified": "2026-10-04T00:00:00Z",
+      "remarks": "Fictional training example selected from NIST SP800-53 Rev. 5.2.0. This is not a NIST Low or Moderate baseline, a complete security requirement set, or evidence of compliance. All ODP values and additional context are illustrative company assumptions."
+    },
+    "components": [
+      {
+        "uuid": "918e0c1b-f33b-497b-a839-d0f86cbef17f",
+        "type": "service",
+        "title": "Company Security Operations Centre (demo)",
+        "description": "Fictional shared SOC: 24/7 security monitoring, centralized log analysis and incident coordination. Partial/shared implementation only; no certification or assurance claim.",
+        "control-implementations": [
+          {
+            "uuid": "9a461b25-b2e3-4707-8fa9-b899e35955b5",
+            "source": "soc-example-profile.json",
+            "description": "Fictional implementation narrative for the seven-control worked example. Evidence named below is illustrative, not supplied evidence. System owners must confirm onboarding and document remaining responsibilities; no control is automatically complete.",
+            "implemented-requirements": [
+              {
+                "uuid": "6d716618-3697-5efc-a6be-736a51930136",
+                "control-id": "au-2",
+                "description": "The SOC maintains an event-selection matrix covering authentication, privileged actions, configuration changes and security alerts. During onboarding an analyst generates test events and checks that each arrives in the central log service. The SOC reviews the matrix quarterly and after material changes or incidents, retaining the telemetry register, test results and review decisions as example evidence. System owners enable the source logs, approve exclusions and document the investigation rationale. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "d79c2d0d-8270-506f-abd4-05f452457cb1",
+                "control-id": "au-6",
+                "description": "SOC analysts review centralized audit records daily and triage high-severity alerts continuously. Saved queries flag repeated authentication failures, unexpected privilege changes, disabled logging and suspicious transfers. Analysts record findings and notify the SOC duty lead and affected system owner; the duty lead increases review coverage when threat intelligence or risk changes. Dated review records, query versions and linked investigation cases are example evidence. System owners maintain log delivery and resolve assigned findings. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "39a0d615-ae85-5897-a8b5-42ea0d0532e5",
+                "control-id": "au-12",
+                "description": "The SOC supplies ingestion schemas and onboarding checks for identity services, APIs, databases, gateways and endpoints. Analysts verify timestamp, actor, event, outcome and source fields using generated test events, and alert on missing telemetry. The event-selection matrix links source configuration to AU-2 logging choices. Example evidence includes ingestion checks and missing-log tickets. Authorized platform administrators configure audit generation and event selection with system-owner approval; the SOC cannot enable logging inside an unconnected system. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "926afb64-e67d-5396-8763-7bad11c53d9d",
+                "control-id": "ir-4",
+                "description": "The SOC operates a 24/7 duty rota and severity-based incident playbooks covering preparation, detection, investigation, proposed containment, eradication support and recovery verification. The incident manager coordinates recovery with continuity staff and records decisions in the case timeline. Post-incident reviews produce assigned improvements to playbooks, training and exercises; a common severity matrix and case checklist make handling consistent. Playbooks, case timelines and lessons-learned actions are example evidence. System owners authorize disruptive containment, remove the cause and restore services. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "71d33c53-2a32-5939-ad11-b1cea98f97bc",
+                "control-id": "ir-5",
+                "description": "The SOC creates a uniquely numbered case for each reported incident and records affected assets, severity, discovery time, evidence references, actions, owner and current status. Analysts update the timeline at each handover and the incident manager reviews open cases daily until closure. Case histories and closure reviews are example evidence. System owners supply impact and remediation updates, and the incident manager approves closure. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "29ac5a7d-eaeb-5f4e-90f5-cf7f614b27eb",
+                "control-id": "ir-6",
+                "description": "The SOC provides a continuously monitored incident portal and duty telephone. Personnel are instructed to report suspected incidents within one hour of discovery; analysts record both timestamps, acknowledge receipt and notify the duty lead and company incident manager. The manager coordinates with Legal to identify authorities and applicable external deadlines. Reporting instructions, acknowledgement timestamps and escalation records are example evidence. System owners train personnel to use these channels; Legal and accountable management authorize external notifications. This is a partial/shared contribution."
+              },
+              {
+                "uuid": "8cc1faf2-d17a-5a26-9419-f7cd49e8d083",
+                "control-id": "si-4",
+                "description": "The SOC correlates central logs, endpoint alerts and network-flow records to detect credential misuse, malicious execution, unauthorized connections and suspected exfiltration. Analysts investigate anomalies, tune detections as risks change, and provide triaged alerts and recommended actions to the duty lead and system owner as needed, plus a daily summary including coverage gaps. Detection rules, sensor-health reports and investigation cases are example evidence. System owners deploy sensors and remediate gaps; Legal reviews monitoring scope and privacy constraints before onboarding or expanding collection. This is a partial/shared contribution."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

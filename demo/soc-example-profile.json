@@ -1,0 +1,233 @@
+{
+  "profile": {
+    "uuid": "0dfb2e91-d42a-43dd-bdce-95f45eb92470",
+    "metadata": {
+      "title": "Company SOC worked example \u2014 7 controls \u2014 DEMO ONLY",
+      "version": "2.0.0",
+      "oscal-version": "1.2.2",
+      "last-modified": "2026-10-04T00:00:00Z",
+      "remarks": "Fictional training example selected from NIST SP800-53 Rev. 5.2.0. This is not a NIST Low or Moderate baseline, a complete security requirement set, or evidence of compliance. All ODP values and additional context are illustrative company assumptions."
+    },
+    "imports": [
+      {
+        "href": "NIST_SP-800-53_rev5_catalog.json",
+        "include-controls": [
+          {
+            "with-ids": [
+              "au-2",
+              "au-6",
+              "au-12",
+              "ir-4",
+              "ir-5",
+              "ir-6",
+              "si-4"
+            ],
+            "with-child-controls": "no"
+          }
+        ]
+      }
+    ],
+    "merge": {
+      "as-is": true
+    },
+    "modify": {
+      "set-parameters": [
+        {
+          "param-id": "au-2_prm_2",
+          "values": [
+            "authentication, privileged activity, configuration changes and security alerts on every occurrence"
+          ]
+        },
+        {
+          "param-id": "au-02_odp.01",
+          "values": [
+            "authentication, privileged activity, configuration changes, data access and security alerts"
+          ]
+        },
+        {
+          "param-id": "au-02_odp.02",
+          "values": [
+            "authentication, privileged activity, configuration changes and security alerts"
+          ]
+        },
+        {
+          "param-id": "au-02_odp.03",
+          "values": [
+            "on every occurrence"
+          ]
+        },
+        {
+          "param-id": "au-02_odp.04",
+          "values": [
+            "quarterly and after a material system change or security incident"
+          ]
+        },
+        {
+          "param-id": "au-06_odp.01",
+          "values": [
+            "daily, with continuous triage of high-severity alerts"
+          ]
+        },
+        {
+          "param-id": "au-06_odp.02",
+          "values": [
+            "repeated authentication failures, unexpected privilege changes, disabled logging and suspicious data transfers"
+          ]
+        },
+        {
+          "param-id": "au-06_odp.03",
+          "values": [
+            "the SOC duty lead and the affected system owner"
+          ]
+        },
+        {
+          "param-id": "au-12_odp.01",
+          "values": [
+            "identity services, application APIs, databases, network gateways and managed endpoints"
+          ]
+        },
+        {
+          "param-id": "au-12_odp.02",
+          "values": [
+            "authorized platform administrators with system-owner approval and SOC advice"
+          ]
+        },
+        {
+          "param-id": "ir-06_odp.01",
+          "values": [
+            "one hour of discovery"
+          ]
+        },
+        {
+          "param-id": "ir-06_odp.02",
+          "values": [
+            "the SOC duty lead and company incident manager; Legal determines any external reporting obligations"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.01",
+          "values": [
+            "detect credential misuse, malicious execution, unauthorized connections and suspected data exfiltration"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.02",
+          "values": [
+            "central log correlation, endpoint detection alerts and network-flow analysis"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.03",
+          "values": [
+            "triaged alerts, affected assets, severity, timeline and recommended response actions"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.04",
+          "values": [
+            "the SOC duty lead and affected system owner"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.05",
+          "values": [
+            "as needed"
+          ]
+        },
+        {
+          "param-id": "si-04_odp.06",
+          "values": [
+            "daily in a consolidated monitoring summary"
+          ]
+        }
+      ],
+      "alters": [
+        {
+          "control-id": "au-2",
+          "adds": [
+            {
+              "position": "ending",
+              "by-id": "au-2_smt.c",
+              "parts": [
+                {
+                  "id": "au-2_demo_logging-scope",
+                  "name": "item",
+                  "title": "Demo context \u2014 logging scope",
+                  "prose": "For this fictional service, the system owner records enabled event types and delivery frequency in a telemetry register. The SOC reviews a sample of each event type during onboarding; application teams explain exclusions."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "control-id": "au-6",
+          "adds": [
+            {
+              "position": "ending",
+              "by-id": "au-6_smt.a",
+              "parts": [
+                {
+                  "id": "au-6_demo_review-evidence",
+                  "name": "item",
+                  "title": "Demo context \u2014 review evidence",
+                  "prose": "The daily review records the query period, analyst, findings and related case IDs. A missing-log alert is investigated as a coverage issue even when no threat alert is raised."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "control-id": "ir-4",
+          "adds": [
+            {
+              "position": "ending",
+              "by-id": "ir-4_smt.a",
+              "parts": [
+                {
+                  "id": "ir-4_demo_containment",
+                  "name": "item",
+                  "title": "Demo context \u2014 containment decisions",
+                  "prose": "The SOC proposes containment in the incident case and records the decision. The system owner authorizes actions affecting availability; the incident manager coordinates recovery with the business continuity lead."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "control-id": "ir-6",
+          "adds": [
+            {
+              "position": "ending",
+              "by-id": "ir-6_smt.a",
+              "parts": [
+                {
+                  "id": "ir-6_demo_reporting",
+                  "name": "item",
+                  "title": "Demo context \u2014 reporting route",
+                  "prose": "Personnel report suspected incidents through the monitored incident portal or duty telephone within the assigned one-hour window. The SOC acknowledges receipt, records discovery and report times, and escalates urgent cases immediately."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "control-id": "si-4",
+          "adds": [
+            {
+              "position": "ending",
+              "by-id": "si-4_smt.g",
+              "parts": [
+                {
+                  "id": "si-4_demo_monitoring-boundary",
+                  "name": "item",
+                  "title": "Demo context \u2014 monitoring boundary",
+                  "prose": "Monitoring covers only assets accepted into the telemetry register. The daily summary identifies disconnected sensors and unmonitored assets alongside threat findings; the system owner owns remediation of these gaps."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
