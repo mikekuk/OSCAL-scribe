@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { validate, bounded } from "../src/shared/validation";
-import { createSsp, integrity, reviewStatus } from "../src/shared/oscal";
+import { createSsp, integrity, reviewStatus, statementParts } from "../src/shared/oscal";
 import { flatten, preview } from "../src/shared/lens/engine.mjs";
-test("actual NIST Low and Moderate yield valid SSPs with exact control coverage", async () => {
+test("small SOC example yields a valid SSP with exactly seven controls", async () => {
   const release = JSON.parse(
     await readFile("work/content-release.json", "utf8"),
   );
+  assert.deepEqual(release.profiles.map((p: any) => p.id), ["soc-worked-example"]);
   for (const p of release.profiles) {
     const doc = createSsp("Example system", p, release.id);
     assert.deepEqual(validate(doc), []);
@@ -23,7 +24,7 @@ test("actual NIST Low and Moderate yield valid SSPs with exact control coverage"
         .sort(),
       selected.sort(),
     );
-    assert.ok(selected.length > 100);
+    assert.deepEqual(selected.sort(), ["au-12", "au-2", "au-6", "ir-4", "ir-5", "ir-6", "si-4"]);
   }
 });
 test("malicious depth, oversized data, unsupported versions and schema violations rejected", () => {
@@ -115,4 +116,70 @@ test("release and attestation digests ignore JSON object property order", async 
     hash({ a: { x: 1, y: 2 }, b: 2 }),
   );
   assert.notEqual(hash({ a: [1, 2] }), hash({ a: [2, 1] }));
+});
+
+test("published demo preserves NIST statements and resolves every example ODP and nested context", async () => {
+  const release = JSON.parse(await readFile("work/content-release.json", "utf8"));
+  const p = release.profiles[0];
+  const profile = release.sources.find((s: any) => s.path === p.path).doc.profile;
+  const catalog = release.sources.find((s: any) => s.doc.catalog).doc.catalog;
+  const rows = flatten(p.resolved.catalog) as any[];
+  const original = flatten(catalog) as any[];
+  for (const setting of profile.modify["set-parameters"]) {
+    const matches = rows.filter(r => r.parameters[setting["param-id"]]);
+    assert.equal(matches.length, 1, "ODP must belong to exactly one selected control");
+    assert.deepEqual(matches[0].parameters[setting["param-id"]].values, setting.values);
+  }
+  for (const row of rows) {
+    for (const parameter of Object.values(row.parameters) as any[])
+      assert.ok(parameter.values?.length, parameter.id + " must have an example value");
+    const before = statementParts(original.find(r => r.control.id === row.control.id).control);
+    const after = statementParts(row.control);
+    for (const part of before)
+      assert.equal(after.find(x => x.id === part.id)?.prose, part.prose, "NIST prose remains intact");
+  }
+  const findPart = (parts: any[], id: string): any => {
+    for (const part of parts) {
+      if (part.id === id) return part;
+      const nested = findPart(part.parts || [], id);
+      if (nested) return nested;
+    }
+  };
+  let additions = 0;
+  for (const alter of profile.modify.alters) {
+    const control = rows.find(r => r.control.id === alter["control-id"]).control;
+    for (const add of alter.adds) {
+      const target = findPart(control.parts, add["by-id"]);
+      assert.ok(target, "context anchor must exist");
+      for (const part of add.parts) {
+        assert.equal(target.parts.find((x: any) => x.id === part.id)?.prose, part.prose);
+        assert.ok(statementParts(control).some(x => x.id === part.id), "context appears in statement editor");
+        additions++;
+      }
+    }
+  }
+  assert.equal(additions, 5);
+  assert.deepEqual(rows.find(r => r.control.id === "ir-6").parameters["ir-06_odp.01"].values, ["one hour of discovery"]);
+  assert.deepEqual(rows.find(r => r.control.id === "au-6").parameters["au-06_odp.01"].values, ["daily, with continuous triage of high-severity alerts"]);
+  const component = release.components[0];
+  assert.deepEqual(validate(component), []);
+  const implementation = component["component-definition"].components[0]["control-implementations"][0];
+  assert.equal(implementation.source, p.path);
+  assert.deepEqual(implementation["implemented-requirements"].map((r: any) => r["control-id"]).sort(),
+    rows.map(r => r.control.id).sort());
+  for (const requirement of implementation["implemented-requirements"]) {
+    assert.match(requirement.description, /example evidence/i);
+    assert.match(requirement.description, /partial\/shared contribution/);
+  }
+});
+
+test("official Low and Moderate remain unchanged reference sources, not demo choices", async () => {
+  const release = JSON.parse(await readFile("work/content-release.json", "utf8"));
+  const sources = release.sources.map((s: any) => ({ ...s, name: s.path }));
+  for (const [name, count] of [["LOW", 149], ["MODERATE", 287]] as const) {
+    const source = sources.find((s: any) => s.path.includes(name + "-baseline"));
+    assert.deepEqual(validate(source.doc, 20_000_000), []);
+    assert.equal(preview(source.doc, sources).rows.length, count);
+    assert.ok(!release.profiles.some((p: any) => p.path === source.path));
+  }
 });

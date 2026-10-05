@@ -160,7 +160,7 @@ Cloud state is authoritative from the first run. Azure Pipelines plan artifacts 
 
 ## 6. Add demo data separately
 
-Run **Scribe – Demo content** after deployment. It downloads the pinned official SP800-53 catalog, resolves Low and Moderate profiles with OSCAL CLI, creates the fictional company SOC component and publishes an immutable demo release into Cosmos. The release artifact is retained with the pipeline run.
+Run **Scribe – Demo content** from **main** after application deployment. It publishes one seven-control SOC example with assigned ODPs, five added statement-context sections and a fictional SOC component with implementation narratives. It resolves the custom profile against the pinned official SP800-53 catalog using OSCAL CLI, then publishes an immutable release into Cosmos. The release artifact is retained with the pipeline run. See [the demo guide](../demo/README.md) for the included controls and how to view the component text.
 
 This is never called by the normal deploy pipeline. The SOC contributes partial/shared implementation to AU-2, AU-6, AU-12, IR-4, IR-5, IR-6 and SI-4. It does not certify control compliance.
 
