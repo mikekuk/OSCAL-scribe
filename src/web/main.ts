@@ -1,10 +1,11 @@
 import { PublicClientApplication } from "@azure/msal-browser";
-import { escapeHtml as h, renderControls } from "../shared/lens/views.mjs";
-import { substituteParameters } from "../shared/lens/parameters.mjs";
+import { escapeHtml as h } from "../shared/lens/views.mjs";
 import { flatten, preview } from "../shared/lens/engine.mjs";
-import { roles, uuid, statementParts, reviewStatus } from "../shared/oscal";
+import { uuid, statementParts, reviewStatus } from "../shared/oscal";
 import { validate } from "./validation";
 import type { Json, Ssp, User } from "../shared/types";
+import { addRole, removeRole, effectiveRequirement, requirement, ensureStatement, setDescription, setSectionStatus, progress, prop, setProp, syncProgress, contributionList, removeComponent } from "../shared/implementation";
+import { filterControls, renderControlCards } from "./control-view";
 import "./style.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let msal: PublicClientApplication | undefined,
@@ -15,7 +16,8 @@ let msal: PublicClientApplication | undefined,
   current: Ssp | undefined,
   baseline: any,
   tab = "Overview",
-  controlIndex = 0,
+  controlQuery = "",
+  controlGroup = "",
   dirty = false,
   errors: string[] = [],
   history: any[] = [],
@@ -29,6 +31,7 @@ const tabs = [
   "Attestation & History",
   "OSCAL / Validation",
 ];
+const openCards = new Set<string>();
 const body = () => current!.oscal["system-security-plan"];
 async function api(path: string, method = "GET", data?: any) {
   let token = "";
@@ -136,6 +139,9 @@ async function open(id: string) {
   current = await api("ssps/" + id);
   baseline = await api(`content/${current!.releaseId}/${current!.profileId}`);
   rowCache = undefined;
+  controlQuery = "";
+  controlGroup = "";
+  openCards.clear();
   history = await api(`ssps/${id}/revisions`);
   tab = "Overview";
   dirty = false;
@@ -168,6 +174,12 @@ function rows() {
 }
 function render() {
   if (!current) return;
+  // Capture only currently rendered expanders. Filters hide cards without
+  // destroying their state; switching tabs and saving also preserve expansion.
+  document.querySelectorAll<HTMLDetailsElement>("[data-expand-key]").forEach(e => {
+    if (e.open) openCards.add(e.dataset.expandKey!);
+    else openCards.delete(e.dataset.expandKey!);
+  });
   const b = body();
   layout(
     `<div class="workspace-heading"><div><div class="eyebrow">${h(current.profileId)} / REVISION ${current.currentRevision}</div><h1>${h(b["system-characteristics"]["system-name"])}</h1><p><span class="pill">${h(current.archived ? "Archived" : reviewStatus(current))}</span> <span id="save-state">${dirty ? "Unsaved changes" : "All changes saved"}</span></p></div><button id="save" ${editable() ? "" : "disabled"}>Save revision</button></div><div class="workspace"><nav aria-label="SSP sections">${tabs.map((t) => `<button data-tab="${t}" class="${tab === t ? "active" : ""}">${t}</button>`).join("")}<div class="nav-foot">Approved content<br><code>${h(current.releaseId.slice(0, 12))}</code><p>Security permissions are separate from system roles.</p></div></nav><article><h2>${tab}</h2>${section()}</article></div>`,
@@ -209,17 +221,13 @@ function section(): string {
   if (tab === "Overview")
     return `<div class="form-grid">${field("System name", "system-characteristics/system-name")}${field("Plan title", "metadata/title")}${field("System status", "system-characteristics/status/state", "select", ["under-development", "operational", "under-major-modification", "disposition", "other"])}${field("System description", "system-characteristics/description", "textarea")}</div><div class="metadata-grid">${info("Owner (Entra object ID)", s.ownerId)}${info("Created", s.createdAt)}${info("Modified", s.modifiedAt)}${info("Last attested", s.lastAttestation?.at)}${info("Next attestation due", s.lastAttestation?.due)}</div>${administer() ? `<hr><h3>Sharing</h3><p>Use the person's immutable object ID from this Entra tenant. They must also be assigned to the application.</p><div class="inline"><input id="share-oid" aria-label="Entra object ID" placeholder="Entra object ID"><select id="share-permission" aria-label="Permission"><option value="read">Read</option><option value="edit">Edit</option></select><button id="share">Share</button></div>${s.access.map((a) => `<p>${h(a.oid)} · ${a.permission} <button class="quiet" data-revoke="${h(a.oid)}">Remove access</button></p>`).join("")}<hr><button id="archive" class="quiet" ${s.archived ? "disabled" : ""}>Archive this plan</button>` : ""}`;
   if (tab === "People & Roles")
-    return `<p>Assign the people accountable for this system. These assignments do not grant access to Scribe.</p>${roles
-      .map(([id, title]) => {
-        const r = b.metadata["responsible-parties"]?.find(
-            (r: Json) => r["role-id"] === id,
-          ),
-          party = b.metadata.parties?.find(
-            (p: Json) => p.uuid === r?.["party-uuids"]?.[0],
-          );
-        return `<section><h3>${title}</h3><div class="form-grid"><label class="field">Full name<input data-person="${id}" data-kind="name" value="${h(party?.name || "")}" ${editable() ? "" : "disabled"}></label><label class="field">Email<input type="email" data-person="${id}" data-kind="email" value="${h(party?.["email-addresses"]?.[0] || "")}" ${editable() ? "" : "disabled"}></label></div></section>`;
-      })
-      .join("")}`;
+    return `<p>Assign the people accountable for this system. Add or remove roles to fit this plan; these assignments do not grant access to Scribe.</p><div class="inline"><input id="new-role-title" aria-label="New role name" placeholder="Role name" maxlength="120" ${editable() ? "" : "disabled"}><button id="add-role" ${editable() ? "" : "disabled"}>Add role</button></div>${(b.metadata.roles || [])
+      .map((role: Json) => {
+        const id = role.id;
+        const r = b.metadata["responsible-parties"]?.find((r: Json) => r["role-id"] === id);
+        const party = b.metadata.parties?.find((p: Json) => p.uuid === r?.["party-uuids"]?.[0]);
+        return `<section class="role-card"><div class="role-heading"><label class="field">Role name<input data-role-title="${h(id)}" value="${h(role.title)}" maxlength="120" ${editable() ? "" : "disabled"}></label><button class="role-remove quiet" data-remove-role="${h(id)}" aria-label="Delete ${h(role.title)} role" title="Delete role" ${editable() ? "" : "disabled"}>×</button></div><div class="form-grid"><label class="field">Full name<input data-person="${h(id)}" data-kind="name" value="${h(party?.name || "")}" ${editable() ? "" : "disabled"}></label><label class="field">Email<input type="email" data-person="${h(id)}" data-kind="email" value="${h(party?.["email-addresses"]?.[0] || "")}" ${editable() ? "" : "disabled"}></label></div></section>`;
+      }).join("")}${b.metadata.roles?.length ? "" : "<p>No roles yet. Add a role and assign a person before attestation.</p>"}`;
   if (tab === "System Characteristics")
     return `<div class="form-grid">${field("Security sensitivity", "system-characteristics/security-sensitivity-level", "select", ["low", "moderate", "high"])}${["confidentiality", "integrity", "availability"].map((k) => field(k + " objective", `system-characteristics/security-impact-level/security-objective-${k}`, "select", ["low", "moderate", "high"])).join("")}${field("Authorization boundary", "system-characteristics/authorization-boundary/description", "textarea")}${field("Information type", "system-characteristics/system-information/information-types/0/title")}${field("Information description", "system-characteristics/system-information/information-types/0/description", "textarea")}${["confidentiality", "integrity", "availability"].map((k) => field("Information " + k, `system-characteristics/system-information/information-types/0/${k}-impact/base`, "select", ["low", "moderate", "high"])).join("")}</div>`;
   if (tab === "Components")
@@ -234,7 +242,7 @@ function section(): string {
       .join("")}`;
   if (tab === "Controls / Implementation") return controls();
   if (tab === "Attestation & History")
-    return `<p>Attestation records an exact saved revision and its SHA-256 digest. Later changes require a new attestation.</p><div class="stats">${info("Review status", reviewStatus(s))}${info("Attested revision", s.lastAttestation?.revision)}${info("Next review", s.lastAttestation?.due)}</div>${administer() ? `<label class="field">Attesting system role<select id="attest-role">${roles.map(([id, title]) => `<option value="${id}">${title}</option>`).join("")}</select></label><button id="attest" ${dirty || s.archived ? "disabled" : ""}>Attest saved revision ${s.currentRevision}</button>` : ""}<h3>Immutable revision history</h3>${history
+    return `<p>Attestation records an exact saved revision and its SHA-256 digest. Later changes require a new attestation.</p><div class="stats">${info("Review status", reviewStatus(s))}${info("Attested revision", s.lastAttestation?.revision)}${info("Next review", s.lastAttestation?.due)}</div>${administer() ? `<label class="field">Attesting system role<select id="attest-role">${(b.metadata.roles || []).map((r: Json) => `<option value="${h(r.id)}">${h(r.title)}</option>`).join("")}</select></label><button id="attest" ${dirty || s.archived || !b.metadata.roles?.length ? "disabled" : ""}>Attest saved revision ${s.currentRevision}</button>` : ""}<h3>Immutable revision history</h3>${history
       .sort((a, b) => b.revision - a.revision)
       .map(
         (r) =>
@@ -245,50 +253,23 @@ function section(): string {
 }
 function controls() {
   const rr = rows();
-  controlIndex = Math.min(controlIndex, rr.length - 1);
-  const row = rr[controlIndex],
-    b = body(),
-    requirements = b["control-implementation"]["implemented-requirements"],
-    index = requirements.findIndex(
-      (r: Json) => r["control-id"] === row.control.id,
-    ),
-    req = requirements[index],
-    base = `control-implementation/implemented-requirements/${index}`;
-  return `<div class="control-toolbar"><label class="field">Find a control<input id="control-search" placeholder="ID or title"></label><label class="field">Applicable control<select id="control-select">${rr.map((r: any, i: number) => `<option value="${i}" ${i === controlIndex ? "selected" : ""}>${h(r.control.id.toUpperCase() + " — " + r.control.title)}</option>`).join("")}</select></label></div><div class="requirement"><div class="eyebrow">AUTHORITATIVE REQUIREMENT</div><p class="legend">Catalogue text · <span class="profile-changed">Profile changes</span> · ODPs retain their assignment state</p>${renderControls("catalog", { rows: [row], sources: [], notes: [] }, null, 0, "", "", { parameters: false })}</div><section class="implementation"><div class="eyebrow">SYSTEM IMPLEMENTATION</div><h3>How does your system meet this requirement?</h3>${field("Implementation status", base + "/props/0/value", "select", ["planned", "partial", "implemented", "not-applicable"])}${field("Implementation description", base + "/by-components/0/description", "textarea")}${field("Remarks", base + "/remarks", "textarea")}<label class="field">Responsible system role<select id="req-role" ${editable() ? "" : "disabled"}><option value="">Unassigned</option>${roles.map(([id, title]) => `<option value="${id}" ${req["responsible-roles"]?.[0]?.["role-id"] === id ? "selected" : ""}>${title}</option>`).join("")}</select></label><h3>Component implementation</h3>${b[
-    "system-implementation"
-  ].components
-    .slice(1)
-    .map((c: Json) => {
-      const bc = req["by-components"]?.find(
-        (x: Json) => x["component-uuid"] === c.uuid,
-      );
-      return `<label class="field">${h(c.title)}<textarea data-bycomponent="${h(c.uuid)}" ${editable() ? "" : "disabled"}>${h(bc?.description || "")}</textarea></label>`;
-    })
-    .join("")}<h3>Statement implementation</h3>${statementParts(row.control)
-    .map((p) => {
-      const stmt = req.statements?.find(
-        (x: Json) => x["statement-id"] === p.id,
-      );
-      return `<label class="field">${h(p.props?.find((x: Json) => x.name === "label")?.value || p.id)}<small>${substituteParameters(p.prose, row.parameters)}</small><textarea data-statement="${h(p.id)}" ${editable() ? "" : "disabled"}>${h(stmt?.["by-components"]?.[0]?.description || "")}</textarea></label>`;
-    })
-    .join("")}<h3>System parameter assignments</h3>${Object.values(
-    row.parameters,
-  )
-    .map(
-      (p: any) =>
-        `<label class="field">${h(p.id)} · ${h(p.label || "Organization-defined value")}<small>Profile: ${h(p.values?.join("; ") || p.select?.choice?.join("; ") || "No assigned value")}</small><input data-parameter="${h(p.id)}" value="${h(req["set-parameters"]?.find((x: Json) => x["param-id"] === p.id)?.values?.join("; ") || "")}" placeholder="Separate multiple values with ;" ${editable() ? "" : "disabled"}></label>`,
-    )
-    .join("")}</section>`;
+  const groups = new Map<string, string>();
+  rr.forEach(row => row.groups.forEach((g: Json) => groups.set(g.id || g.title, g.title || g.id)));
+  return `<div class="control-toolbar"><label class="field">Find controls<input id="control-search" type="search" value="${h(controlQuery)}" placeholder="ID, title or requirement text"></label><label class="field">Control group<select id="control-group"><option value="">All groups</option>${[...groups].map(([id, title]) => `<option value="${h(id)}" ${controlGroup === id ? "selected" : ""}>${h(title)}</option>`).join("")}</select></label></div><div class="control-actions"><span id="control-count" role="status" aria-live="polite"></span><button id="expand-controls" class="quiet">Expand all</button><button id="collapse-controls" class="quiet">Collapse all</button></div><p class="status-legend"><span class="status-not-set">Not set</span><span class="status-partial">Partial</span><span class="status-implemented">Implemented</span><span class="status-alternative">Alternative</span><span class="status-component">By component</span><span class="status-not-applicable">N/A</span></p><div id="control-cards">${renderControlCards(body(), rr, baseline.components, !!editable(), openCards)}</div><p id="no-controls" hidden>No controls match these filters.</p>`;
 }
-function activeReq() {
-  return body()["control-implementation"]["implemented-requirements"].find(
-    (r: Json) => r["control-id"] === rows()[controlIndex].control.id,
-  );
+function applyControlFilter() {
+  const matches = new Set(filterControls(rows(), controlGroup, controlQuery).map(r => r.control.id));
+  document.querySelectorAll<HTMLElement>("[data-control-card]").forEach(e => e.hidden = !matches.has(e.dataset.controlCard!));
+  const count = document.querySelector("#control-count");
+  if (count) count.textContent = `${matches.size} of ${rows().length} controls`;
+  const empty = document.querySelector<HTMLElement>("#no-controls");
+  if (empty) empty.hidden = matches.size > 0;
 }
 function bind() {
   document.querySelectorAll<HTMLInputElement>("[data-person]").forEach(
     (e) =>
       (e.oninput = () => {
+        if (!editable()) return;
         const m = body().metadata,
           id = e.dataset.person!;
         m.parties ??= [];
@@ -317,6 +298,7 @@ function bind() {
   document.querySelectorAll<HTMLInputElement>("[data-component]").forEach(
     (e) =>
       (e.onchange = () => {
+        if (!editable()) return;
         const list = body()["system-implementation"].components,
           id = e.dataset.component!;
         if (e.checked) {
@@ -332,107 +314,94 @@ function bind() {
             remarks:
               "Describe onboarding, scope and remaining system responsibilities.",
           });
-        } else {
-          body()["system-implementation"].components = list.filter(
-            (c: Json) => c.uuid !== id,
-          );
-          for (const r of body()["control-implementation"][
-            "implemented-requirements"
-          ]) {
-            r["by-components"] = r["by-components"]?.filter(
-              (c: Json) => c["component-uuid"] !== id,
-            );
-            if (!r["by-components"]?.length) delete r["by-components"];
+          // Selecting a shared service imports its declared contribution. Unknown
+          // or partial coverage stays partial; existing user section decisions win.
+          for (const row of rows()) {
+            const r = requirement(body(), row.control.id);
+            if (!contributionList(body(), baseline.components, row.control.id).some(x => x.component.uuid === id)) continue;
+            for (const part of statementParts(row.control)) {
+              const existing = r.statements?.find((x: Json) => x["statement-id"] === part.id);
+              if (!prop(existing || {}, "implementation-status"))
+                setSectionStatus(body(), r, row.control, part.id, "component:" + id, baseline.components);
+            }
           }
+        } else {
+          removeComponent(body(), id, rows());
         }
         mark();
         render();
       }),
   );
-  const select = document.querySelector<HTMLSelectElement>("#control-select");
-  if (select)
-    select.onchange = () => {
-      controlIndex = Number(select.value);
-      render();
-    };
+  // Use control/statement IDs on every input: editing multiple open cards must
+  // never depend on the previously selected control or an array index.
+  const controlFor = (e: HTMLElement) => rows().find(r => r.control.id === e.dataset.control).control;
+  const reqFor = (e: HTMLElement) => {
+    const req = requirement(body(), e.dataset.control!);
+    Object.assign(req, effectiveRequirement(body(), req, controlFor(e), baseline.components));
+    return req;
+  };
+  const systemId = body()["system-implementation"].components[0].uuid;
   const search = document.querySelector<HTMLInputElement>("#control-search");
-  if (search)
-    search.oninput = () => {
-      for (const o of select!.options)
-        // Keep the displayed selection consistent with the implementation being edited.
-        o.hidden = !o.selected && !o.text.toLowerCase().includes(search.value.toLowerCase());
-    };
-  const role = document.querySelector<HTMLSelectElement>("#req-role");
-  if (role)
-    role.onchange = () => {
-      const r = activeReq();
-      if (role.value) r["responsible-roles"] = [{ "role-id": role.value }];
-      else delete r["responsible-roles"];
-      mark();
-    };
-  document.querySelectorAll<HTMLInputElement>("[data-parameter]").forEach(
-    (e) =>
-      (e.oninput = () => {
-        const r = activeReq(),
-          id = e.dataset.parameter!;
-        r["set-parameters"] = (r["set-parameters"] || []).filter(
-          (p: Json) => p["param-id"] !== id,
-        );
-        if (e.value.trim())
-          r["set-parameters"].push({
-            "param-id": id,
-            values: e.value
-              .split(";")
-              .map((v) => v.trim())
-              .filter(Boolean),
-          });
-        if (!r["set-parameters"].length) delete r["set-parameters"];
-        mark();
-      }),
-  );
-  document.querySelectorAll<HTMLTextAreaElement>("[data-bycomponent]").forEach(
-    (e) =>
-      (e.oninput = () => {
-        const r = activeReq(),
-          id = e.dataset.bycomponent!;
-        r["by-components"] = (r["by-components"] || []).filter(
-          (x: Json) => x["component-uuid"] !== id,
-        );
-        if (e.value.trim())
-          r["by-components"].push({
-            uuid: uuid(),
-            "component-uuid": id,
-            description: e.value,
-          });
-        if (!r["by-components"].length) delete r["by-components"];
-        mark();
-      }),
-  );
-  document.querySelectorAll<HTMLTextAreaElement>("[data-statement]").forEach(
-    (e) =>
-      (e.oninput = () => {
-        const r = activeReq(),
-          id = e.dataset.statement!;
-        r.statements = (r.statements || []).filter(
-          (x: Json) => x["statement-id"] !== id,
-        );
-        if (e.value.trim())
-          r.statements.push({
-            uuid: uuid(),
-            "statement-id": id,
-            "by-components": [
-              {
-                uuid: uuid(),
-                "component-uuid":
-                  body()["system-implementation"].components[0].uuid,
-                description: e.value,
-              },
-            ],
-          });
-        if (!r.statements.length) delete r.statements;
-        mark();
-      }),
-  );
+  if (search) search.oninput = () => { controlQuery = search.value; applyControlFilter(); };
+  const group = document.querySelector<HTMLSelectElement>("#control-group");
+  if (group) group.onchange = () => { controlGroup = group.value; applyControlFilter(); };
+  if (tab === "Controls / Implementation") applyControlFilter();
+  for (const [id, value] of [["expand-controls", true], ["collapse-controls", false]] as const) {
+    document.querySelector("#" + id)?.addEventListener("click", () => {
+      document.querySelectorAll<HTMLDetailsElement>("[data-control-card]:not([hidden])").forEach(e => {
+        e.open = value;
+        // Keep the embedded Lens content open: its summary is hidden inside
+        // the separately expandable requirements panel.
+        if (!value) e.querySelectorAll<HTMLDetailsElement>("[data-expand-key]").forEach(d => d.open = false);
+      });
+    });
+  }
+  document.querySelectorAll<HTMLSelectElement>("[data-section-status]").forEach(e => e.onchange = () => void run(() => {
+    if (!editable()) return;
+    setSectionStatus(body(), reqFor(e), controlFor(e), e.dataset.sectionStatus!, e.value, baseline.components);
+    mark(); render();
+  }));
+  document.querySelectorAll<HTMLSelectElement>("[data-completion]").forEach(e => e.onchange = () => void run(() => {
+    if (!editable()) return;
+    const req = reqFor(e), control = controlFor(e);
+    if (e.value === "implemented" && !progress(req, control).allComplete) throw Error("Complete every required section first");
+    setProp(req, "completion-decision", e.value === "auto" ? undefined : e.value);
+    syncProgress(req, control); mark(); render();
+  }));
+  document.querySelectorAll<HTMLSelectElement>("[data-req-role]").forEach(e => e.onchange = () => {
+    if (!editable()) return;
+    const req = reqFor(e);
+    if (e.value) req["responsible-roles"] = [{ "role-id": e.value }];
+    else delete req["responsible-roles"];
+    mark();
+  });
+  document.querySelectorAll<HTMLTextAreaElement>("[data-system-description], [data-bycomponent], [data-statement], [data-statement-remarks], [data-control-remarks]").forEach(e => e.oninput = () => {
+    if (!editable()) return;
+    const req = reqFor(e);
+    if (e.hasAttribute("data-control-remarks")) { if (e.value) req.remarks = e.value; else delete req.remarks; }
+    else if (e.dataset.statementRemarks) {
+      const statement = ensureStatement(req, e.dataset.statementRemarks);
+      if (e.value) statement.remarks = e.value; else delete statement.remarks;
+    } else {
+      const target = e.dataset.statement ? ensureStatement(req, e.dataset.statement) : req;
+      setDescription(target, e.dataset.bycomponent || systemId, e.value);
+    }
+    mark();
+  });
+  document.querySelectorAll<HTMLInputElement>("[data-role-title]").forEach(e => e.onchange = () => void run(() => {
+    if (!editable()) return;
+    const title = e.value.trim(), role = body().metadata.roles.find((r: Json) => r.id === e.dataset.roleTitle);
+    if (!title || title.length > 120) { e.value = role.title; throw Error("Enter a role name of 1–120 characters"); }
+    role.title = title; mark();
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-role]").forEach(e => e.onclick = () => {
+    if (!editable()) return;
+    removeRole(body(), e.dataset.removeRole!); mark(); render();
+  });
+  document.querySelector("#add-role")?.addEventListener("click", () => void run(() => {
+    if (!editable()) return;
+    addRole(body(), document.querySelector<HTMLInputElement>("#new-role-title")!.value); mark(); render();
+  }));
   const on = (id: string, fn: () => any) =>
     document.querySelector("#" + id)?.addEventListener("click", () => run(fn));
   on("share", async () => {
@@ -509,6 +478,13 @@ function bind() {
   );
 }
 async function save() {
+  // Persist the same section/component roll-up that the user reviewed, including
+  // conservative contributions from older published components.
+  for (const row of rows()) {
+    const req = requirement(body(), row.control.id);
+    Object.assign(req, effectiveRequirement(body(), req, row.control, baseline.components));
+    if (prop(req, "status-tracking")) syncProgress(req, row.control);
+  }
   errors = validate(current!.oscal);
   if (errors.length) {
     tab = "OSCAL / Validation";

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { canRead, canEdit, canShare, canAttest, canAdminister } from "./authz";
-import { createSsp, integrity, roles } from "../shared/oscal";
+import { createSsp, integrity } from "../shared/oscal";
 import { validate, bounded } from "../shared/validation";
 import type {
   User,
@@ -225,21 +225,15 @@ export class Service {
       requireKeys(body, ["revision", "systemRole"]);
       if (body.revision !== s.currentRevision)
         throw new ApiError(409, "Attest the current saved revision");
-      if (!roles.some(([id]) => id === body.systemRole))
-        throw new ApiError(400, "Select a system role");
       const b = s.oscal["system-security-plan"];
-      if (
-        roles.some(
-          ([id]) =>
-            !b.metadata["responsible-parties"]?.some(
-              (r: Json) => r["role-id"] === id && r["party-uuids"]?.length,
-            ),
-        )
-      )
-        throw new ApiError(
-          422,
-          "Assign all four system roles before attestation",
-        );
+      // Roles belong to the saved revision. Default role names are templates,
+      // not a fixed authorization policy; deleting SSO/SRO must not block attest.
+      const systemRoles = b.metadata.roles || [];
+      if (!systemRoles.some((r: Json) => r.id === body.systemRole))
+        throw new ApiError(400, "Select a role defined in this saved plan");
+      if (systemRoles.some((role: Json) => !b.metadata["responsible-parties"]?.some(
+        (r: Json) => r["role-id"] === role.id && r["party-uuids"]?.length,
+      ))) throw new ApiError(422, "Assign a person to each current system role before attestation");
       const date = new Date(now);
       date.setUTCFullYear(date.getUTCFullYear() + 1);
       const a = {

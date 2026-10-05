@@ -221,3 +221,29 @@ test("JWT trust boundary: signature, audience, tenant, scope, expiry and role ar
   );
   await assert.rejects(wrongAud("Bearer " + good));
 });
+
+
+test("attestation follows custom roles after deleting SSO and SRO", async () => {
+  const { removeRole, addRole } = await import("../src/shared/implementation");
+  const { s, doc, path } = await fixture();
+  const b = doc.oscal["system-security-plan"];
+  for (const role of [...b.metadata.roles]) removeRole(b, role.id);
+  const role = addRole(b, "Service owner");
+  const party = "55555555-5555-4555-8555-555555555555";
+  b.metadata.parties = [{ uuid: party, type: "person", name: "Accountable owner" }];
+  b.metadata["responsible-parties"] = [{ "role-id": role.id, "party-uuids": [party] }];
+  await s.request(B, "PUT", path, { oscal: doc.oscal }, "1");
+  await denied(s.request(B, "POST", path + "/attest", { revision: 2, systemRole: "senior-risk-owner" }, "2"), 400);
+  const attested = await s.request(B, "POST", path + "/attest", { revision: 2, systemRole: role.id }, "2");
+  assert.equal(attested.lastAttestation.systemRole, role.id);
+});
+
+test("attestation requires assignments for the current roles, not deleted defaults", async () => {
+  const { removeRole, addRole } = await import("../src/shared/implementation");
+  const { s, doc, path } = await fixture();
+  const b = doc.oscal["system-security-plan"];
+  for (const role of [...b.metadata.roles]) removeRole(b, role.id);
+  const role = addRole(b, "Service owner");
+  await s.request(B, "PUT", path, { oscal: doc.oscal }, "1");
+  await denied(s.request(B, "POST", path + "/attest", { revision: 2, systemRole: role.id }, "2"), 422);
+});
