@@ -166,10 +166,15 @@ test("published demo preserves NIST statements and resolves every example ODP an
   const implementation = component["component-definition"].components[0]["control-implementations"][0];
   assert.equal(implementation.source, p.path);
   assert.deepEqual(implementation["implemented-requirements"].map((r: any) => r["control-id"]).sort(),
-    rows.map(r => r.control.id).sort());
+    ["au-2", "au-6", "ir-4", "ir-5", "si-4"]);
   for (const requirement of implementation["implemented-requirements"]) {
     assert.match(requirement.description, /example evidence/i);
-    assert.match(requirement.description, /partial\/shared contribution/);
+    const parts = statementParts(rows.find(r => r.control.id === requirement["control-id"]).control);
+    assert.ok(requirement.statements.every((s: any) => parts.some(p => p.id === s["statement-id"])), "only valid covered sections are published");
+    for (const statement of requirement.statements) {
+      assert.ok(statement.description.length > 40);
+      assert.equal(statement.props.find((p: any) => p.name === "implementation-status").value, "implemented");
+    }
   }
 });
 

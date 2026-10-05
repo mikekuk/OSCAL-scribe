@@ -20,7 +20,7 @@ npm run dev
 
 Open http://127.0.0.1:5173. This explicit local demo uses an in-memory repository and a fixed fictional identity, binds only to loopback and is never included in the Azure Functions deployment. Restarting the demo API clears SSPs. Production always requires a verified Entra access token.
 
-The separate demo pipeline publishes a seven-control SOC worked example selected from pinned NIST SP800-53 Revision 5.2.0 content: AU-2, AU-6, AU-12, IR-4, IR-5, IR-6 and SI-4. It includes assigned ODPs, five added statement-context sections and a fictional SOC component with implementation narratives. It is not a full NIST baseline or a compliance claim. Original Low and Moderate profiles remain reference sources, not selectable demo profiles. See [demo content](demo/README.md).
+The separate demo pipeline publishes a seven-control SOC worked example selected from pinned NIST SP800-53 Revision 5.2.0 content: AU-2, AU-6, AU-12, IR-4, IR-5, IR-6 and SI-4. It includes assigned ODPs, five added statement-context sections and a fictional SOC component with 16 implemented statement-level contributions. The [control workspace](docs/control-workspace.md) supports the default System component and user-defined SSP-local components, independent copy/move assignments and native OSCAL statuses. It is not a full NIST baseline or a compliance claim. Original Low and Moderate profiles remain reference sources, not selectable demo profiles. See [demo content](demo/README.md).
 
 ## Checks
 

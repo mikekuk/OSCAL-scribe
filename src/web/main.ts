@@ -1,10 +1,10 @@
 import { PublicClientApplication } from "@azure/msal-browser";
 import { escapeHtml as h } from "../shared/lens/views.mjs";
 import { flatten, preview } from "../shared/lens/engine.mjs";
-import { uuid, statementParts, reviewStatus } from "../shared/oscal";
+import { uuid, reviewStatus } from "../shared/oscal";
 import { validate } from "./validation";
 import type { Json, Ssp, User } from "../shared/types";
-import { addRole, removeRole, effectiveRequirement, requirement, ensureStatement, setDescription, setSectionStatus, progress, prop, setProp, syncProgress, contributionList, removeComponent } from "../shared/implementation";
+import { addRole, removeRole, effectiveRequirement, requirement, ensureStatement, setDescription, setSectionStatus, systemComponent, syncProgress, applyComponentStatements, removeComponent, addLocalComponent, importedComponentIds, assignedComponentIds, transferControls, setComponentRemarks, deleteLocalComponent, deleteControlAssignment } from "../shared/implementation";
 import { filterControls, renderControlCards } from "./control-view";
 import "./style.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -16,8 +16,12 @@ let msal: PublicClientApplication | undefined,
   current: Ssp | undefined,
   baseline: any,
   tab = "Overview",
+  addComponentOpen = false,
   controlQuery = "",
   controlGroup = "",
+  controlComponent = "",
+  transferSource = "",
+  transferTarget = "",
   dirty = false,
   errors: string[] = [],
   history: any[] = [],
@@ -32,6 +36,7 @@ const tabs = [
   "OSCAL / Validation",
 ];
 const openCards = new Set<string>();
+const selectedControls = new Set<string>();
 const body = () => current!.oscal["system-security-plan"];
 async function api(path: string, method = "GET", data?: any) {
   let token = "";
@@ -141,6 +146,11 @@ async function open(id: string) {
   rowCache = undefined;
   controlQuery = "";
   controlGroup = "";
+  controlComponent = "";
+  transferSource = "";
+  transferTarget = "";
+  selectedControls.clear();
+  addComponentOpen = false;
   openCards.clear();
   history = await api(`ssps/${id}/revisions`);
   tab = "Overview";
@@ -230,16 +240,7 @@ function section(): string {
       }).join("")}${b.metadata.roles?.length ? "" : "<p>No roles yet. Add a role and assign a person before attestation.</p>"}`;
   if (tab === "System Characteristics")
     return `<div class="form-grid">${field("Security sensitivity", "system-characteristics/security-sensitivity-level", "select", ["low", "moderate", "high"])}${["confidentiality", "integrity", "availability"].map((k) => field(k + " objective", `system-characteristics/security-impact-level/security-objective-${k}`, "select", ["low", "moderate", "high"])).join("")}${field("Authorization boundary", "system-characteristics/authorization-boundary/description", "textarea")}${field("Information type", "system-characteristics/system-information/information-types/0/title")}${field("Information description", "system-characteristics/system-information/information-types/0/description", "textarea")}${["confidentiality", "integrity", "availability"].map((k) => field("Information " + k, `system-characteristics/system-information/information-types/0/${k}-impact/base`, "select", ["low", "moderate", "high"])).join("")}</div>`;
-  if (tab === "Components")
-    return `<p>Select approved shared services. Their published contribution stays read-only; record this system's use separately.</p>${baseline.components
-      .flatMap((d: Json) => d["component-definition"].components || [])
-      .map((c: Json) => {
-        const i = b["system-implementation"].components.findIndex(
-          (x: Json) => x.uuid === c.uuid,
-        );
-        return `<section><label class="component-title"><input type="checkbox" data-component="${h(c.uuid)}" ${i >= 0 ? "checked" : ""} ${editable() ? "" : "disabled"}> ${h(c.title)}</label><p>${h(c.description)}</p><details><summary>Published control contributions</summary>${c["control-implementations"]?.flatMap((ci: Json) => ci["implemented-requirements"].map((r: Json) => `<p><b>${h(r["control-id"])}</b> ${h(r.description)}</p>`)).join("")}</details>${i >= 0 ? field("How this system uses the service", `system-implementation/components/${i}/remarks`, "textarea") : ""}</section>`;
-      })
-      .join("")}`;
+  if (tab === "Components") return components();
   if (tab === "Controls / Implementation") return controls();
   if (tab === "Attestation & History")
     return `<p>Attestation records an exact saved revision and its SHA-256 digest. Later changes require a new attestation.</p><div class="stats">${info("Review status", reviewStatus(s))}${info("Attested revision", s.lastAttestation?.revision)}${info("Next review", s.lastAttestation?.due)}</div>${administer() ? `<label class="field">Attesting system role<select id="attest-role">${(b.metadata.roles || []).map((r: Json) => `<option value="${h(r.id)}">${h(r.title)}</option>`).join("")}</select></label><button id="attest" ${dirty || s.archived || !b.metadata.roles?.length ? "disabled" : ""}>Attest saved revision ${s.currentRevision}</button>` : ""}<h3>Immutable revision history</h3>${history
@@ -251,14 +252,44 @@ function section(): string {
       .join("")}`;
   return `<p>Schema validation checks structure and references. It does not certify that controls are effective.</p><button id="validate">Validate plan</button> <button id="export">Download OSCAL SSP</button> <button id="export-baseline" class="quiet">Download pinned baseline</button><div class="validation" role="status">${errors.length ? errors.map((e) => `<p>${h(e)}</p>`).join("") : "Run validation to check the current document."}</div><details><summary>Inspect OSCAL JSON</summary><pre>${h(JSON.stringify(current!.oscal, null, 2))}</pre></details>`;
 }
+/** Local component records live only in the SSP. Imported records retain their
+ * definition identity; adding a Windows/Linux component never publishes a CDEF. */
+function components() {
+  const b = body(), imported = importedComponentIds(baseline.components), disabled = editable() ? "" : "disabled";
+  const locals: Json[] = b["system-implementation"].components.filter((c: Json) => !imported.has(c.uuid));
+  const types = ["software", "hardware", "service", "policy", "process", "procedure"];
+  return `<div class="component-heading"><p>Use System for shared implementation, or add components that match your system. Assign controls using Copy or Move in Controls / Implementation.</p><button id="toggle-add-component" class="quiet component-add" aria-label="Add local component" aria-expanded="${addComponentOpen}" title="Add local component" ${disabled}>+</button></div>
+    ${locals.map(c => c.type === "this-system" ? '<section><h3>System</h3><p>Default component for system-wide implementation. Always included in this SSP.</p></section>' : `<section><div class="component-heading"><h3>${h(c.title)}</h3><button class="quiet" data-delete-local-component="${h(c.uuid)}" ${disabled}>Delete component</button></div><p class="legend">Deleting this component returns any uniquely assigned work to System.</p>
+      <label class="field">Component name<input data-local-component="${h(c.uuid)}" data-component-field="title" value="${h(c.title)}" ${disabled}></label>
+      <label class="field">Component type<select data-local-component="${h(c.uuid)}" data-component-field="type" ${disabled}>${types.map(type => `<option value="${type}" ${c.type === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+      <label class="field">Description<textarea data-local-component="${h(c.uuid)}" data-component-field="description" ${disabled}>${h(c.description)}</textarea></label></section>`).join("")}
+
+    <h3>Published components</h3><p>Select a published component to import its statement implementations. Blue identifies imported components; each implementation keeps its own OSCAL status.</p>
+    ${baseline.components.flatMap((d: Json) => d["component-definition"].components || []).map((c: Json) => {
+      const i = b["system-implementation"].components.findIndex((x: Json) => x.uuid === c.uuid);
+      return `<section class="imported-component"><label class="component-title"><input type="checkbox" data-component="${h(c.uuid)}" ${i >= 0 ? "checked" : ""} ${disabled}>${h(c.title)}</label><p>${h(c.description)}</p><details><summary>Published control contributions</summary>${(c["control-implementations"] || []).flatMap((ci: Json) => ci["implemented-requirements"].map((r: Json) => `<p><strong>${h(r["control-id"])}</strong> ${h(r.description)}</p>${(r.statements || []).map((x: Json) => `<p><strong>${h(x["statement-id"])}</strong> ${h(x.description)}</p>`).join("")}`)).join("")}</details>${i >= 0 ? field("How this system uses the service", `system-implementation/components/${i}/remarks`, "textarea") : ""}</section>`;
+    }).join("")}
+    ${addComponentOpen ? `<section><h3>Add a component to this SSP</h3><div class="form-grid"><label class="field">New component name<input id="new-component-title" placeholder="Component name" ${disabled}></label><label class="field">New component type<select id="new-component-type" ${disabled}>${types.map(type => `<option>${type}</option>`).join("")}</select></label></div><label class="field">New component description<textarea id="new-component-description" ${disabled}></textarea></label><button id="add-component" ${disabled}>Add component</button></section>` : ""}`;
+}
 function controls() {
-  const rr = rows();
+  const rr = rows(), b = body(), imported = importedComponentIds(baseline.components), disabled = editable() ? "" : "disabled";
+  const all: Json[] = b["system-implementation"].components;
+  const local = all.filter(c => !imported.has(c.uuid));
+  if (!all.some(c => c.uuid === transferSource)) transferSource = all.find(c => c.type === "this-system")!.uuid;
+  if (!local.some(c => c.uuid === transferTarget && c.uuid !== transferSource)) transferTarget = local.find(c => c.uuid !== transferSource)?.uuid || "";
+  const options = (list: Json[], value: string) => list.map(c => `<option value="${h(c.uuid)}" ${c.uuid === value ? "selected" : ""}>${h(c.title)}</option>`).join("");
   const groups = new Map<string, string>();
   rr.forEach(row => row.groups.forEach((g: Json) => groups.set(g.id || g.title, g.title || g.id)));
-  return `<div class="control-toolbar"><label class="field">Find controls<input id="control-search" type="search" value="${h(controlQuery)}" placeholder="ID, title or requirement text"></label><label class="field">Control group<select id="control-group"><option value="">All groups</option>${[...groups].map(([id, title]) => `<option value="${h(id)}" ${controlGroup === id ? "selected" : ""}>${h(title)}</option>`).join("")}</select></label></div><div class="control-actions"><span id="control-count" role="status" aria-live="polite"></span><button id="expand-controls" class="quiet">Expand all</button><button id="collapse-controls" class="quiet">Collapse all</button></div><p class="status-legend"><span class="status-not-set">Not set</span><span class="status-partial">Partial</span><span class="status-implemented">Implemented</span><span class="status-alternative">Alternative</span><span class="status-component">By component</span><span class="status-not-applicable">N/A</span></p><div id="control-cards">${renderControlCards(body(), rr, baseline.components, !!editable(), openCards)}</div><p id="no-controls" hidden>No controls match these filters.</p>`;
+  return `<div class="control-toolbar"><label class="field">Find controls<input id="control-search" type="search" value="${h(controlQuery)}" placeholder="ID, title or requirement text"></label><label class="field">Control group<select id="control-group"><option value="">All groups</option>${[...groups].map(([id, title]) => `<option value="${h(id)}" ${controlGroup === id ? "selected" : ""}>${h(title)}</option>`).join("")}</select></label><label class="field">Component view<select id="control-component"><option value="">All components</option>${options(all, controlComponent)}</select></label></div>
+    <div class="transfer-toolbar"><strong>Copy or move selected control implementations</strong><p>Copy keeps the source. Move reassigns it. Existing destination work is never overwritten.</p><div class="form-grid"><label class="field">From component<select id="transfer-source" ${disabled}>${options(all, transferSource)}</select></label><label class="field">To component<select id="transfer-target" ${disabled}><option value="">Choose a local component</option>${options(local.filter(c => c.uuid !== transferSource), transferTarget)}</select></label></div><span id="selected-control-count">${selectedControls.size} controls selected</span> <button id="copy-controls" ${disabled}>Copy selected</button> <button id="move-controls" ${disabled || (imported.has(transferSource) ? "disabled" : "")}>Move selected</button> <button id="clear-control-selection" class="quiet">Clear selection</button>${imported.has(transferSource) ? '<p>Imported originals stay assigned to their source. Copy them to make a local implementation.</p>' : ""}</div>
+    <div class="control-actions"><span id="control-count" role="status" aria-live="polite"></span><button id="expand-controls" class="quiet">Expand all</button><button id="collapse-controls" class="quiet">Collapse all</button></div>
+    <p class="status-legend">${Object.entries({ planned: "Planned", partial: "Partial", implemented: "Implemented", alternative: "Alternative", "not-applicable": "Not applicable" }).map(([state, label]) => `<span class="status-${state}">${label}</span>`).join("")}<span class="origin-imported">Blue: imported source</span></p>
+    <div id="control-cards">${renderControlCards(b, rr, baseline.components, !!editable(), openCards, selectedControls, controlComponent)}</div><p id="no-controls" hidden>No controls match these filters.</p>`;
 }
 function applyControlFilter() {
-  const matches = new Set(filterControls(rows(), controlGroup, controlQuery).map(r => r.control.id));
+  const matches = new Set(filterControls(rows(), controlGroup, controlQuery)
+    .filter(r => !controlComponent || assignedComponentIds(effectiveRequirement(body(), requirement(body(), r.control.id), r.control, baseline.components)).has(controlComponent))
+    .map(r => r.control.id));
   document.querySelectorAll<HTMLElement>("[data-control-card]").forEach(e => e.hidden = !matches.has(e.dataset.controlCard!));
   const count = document.querySelector("#control-count");
   if (count) count.textContent = `${matches.size} of ${rows().length} controls`;
@@ -311,22 +342,14 @@ function bind() {
             title: c.title,
             description: c.description,
             status: { state: "operational" },
+            links: [{ rel: "imported-from", href: "urn:uuid:" + baseline.components.find((d: Json) => d["component-definition"].components.some((x: Json) => x.uuid === id))["component-definition"].uuid + "#" + id }],
             remarks:
               "Describe onboarding, scope and remaining system responsibilities.",
           });
-          // Selecting a shared service imports its declared contribution. Unknown
-          // or partial coverage stays partial; existing user section decisions win.
-          for (const row of rows()) {
-            const r = requirement(body(), row.control.id);
-            if (!contributionList(body(), baseline.components, row.control.id).some(x => x.component.uuid === id)) continue;
-            for (const part of statementParts(row.control)) {
-              const existing = r.statements?.find((x: Json) => x["statement-id"] === part.id);
-              if (!prop(existing || {}, "implementation-status"))
-                setSectionStatus(body(), r, row.control, part.id, "component:" + id, baseline.components);
-            }
-          }
+          for (const row of rows())
+            applyComponentStatements(body(), requirement(body(), row.control.id), row.control, baseline.components);
         } else {
-          removeComponent(body(), id, rows());
+          removeComponent(body(), id, rows(), baseline.components);
         }
         mark();
         render();
@@ -340,9 +363,60 @@ function bind() {
     Object.assign(req, effectiveRequirement(body(), req, controlFor(e), baseline.components));
     return req;
   };
-  const systemId = body()["system-implementation"].components[0].uuid;
+  const systemId = body()["system-implementation"].components.find((c: Json) => c.type === "this-system")?.uuid;
   const search = document.querySelector<HTMLInputElement>("#control-search");
   if (search) search.oninput = () => { controlQuery = search.value; applyControlFilter(); };
+  document.querySelector<HTMLSelectElement>("#control-component")?.addEventListener("change", e => {
+    controlComponent = (e.target as HTMLSelectElement).value;
+    if (controlComponent) transferSource = controlComponent;
+    render();
+  });
+  document.querySelectorAll<HTMLInputElement>("[data-select-control]").forEach(e => {
+    e.onclick = event => event.stopPropagation();
+    e.onchange = () => {
+      if (e.checked) selectedControls.add(e.dataset.selectControl!); else selectedControls.delete(e.dataset.selectControl!);
+      document.querySelector("#selected-control-count")!.textContent = `${selectedControls.size} controls selected`;
+    };
+  });
+  document.querySelector<HTMLSelectElement>("#transfer-source")?.addEventListener("change", e => { transferSource = (e.target as HTMLSelectElement).value; render(); });
+  document.querySelector<HTMLSelectElement>("#transfer-target")?.addEventListener("change", e => { transferTarget = (e.target as HTMLSelectElement).value; });
+  document.querySelector("#clear-control-selection")?.addEventListener("click", () => { selectedControls.clear(); render(); });
+  for (const mode of ["copy", "move"] as const) document.querySelector("#" + mode + "-controls")?.addEventListener("click", () => void run(() => {
+    if (!editable()) return;
+    transferControls(body(), rows(), [...selectedControls], transferSource, transferTarget, mode, baseline.components);
+    const count = selectedControls.size;
+    selectedControls.clear(); mark(); render(); message(`${count} control implementations ${mode === "copy" ? "copied" : "moved"}.`);
+  }));
+  document.querySelector("#toggle-add-component")?.addEventListener("click", () => {
+    addComponentOpen = !addComponentOpen; render();
+    document.querySelector<HTMLInputElement>("#new-component-title")?.focus();
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-local-component]").forEach(e => e.onclick = () => void run(() => {
+    if (!editable()) return;
+    deleteLocalComponent(body(), e.dataset.deleteLocalComponent!, rows(), baseline.components);
+    if (controlComponent === e.dataset.deleteLocalComponent) controlComponent = "";
+    mark(); render(); message("Component deleted. Any uniquely assigned work has returned to System.");
+  }));
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-assignment]").forEach(e => e.onclick = () => void run(() => {
+    if (!editable()) return;
+    deleteControlAssignment(body(), reqFor(e), controlFor(e), e.dataset.deleteAssignment!, baseline.components);
+    mark(); render(); message("Control assignment deleted; implementation is retained in the other components.");
+  }));
+  document.querySelector("#add-component")?.addEventListener("click", () => void run(() => {
+    if (!editable()) return;
+    const component = addLocalComponent(body(), document.querySelector<HTMLInputElement>("#new-component-title")!.value,
+      document.querySelector<HTMLSelectElement>("#new-component-type")!.value, document.querySelector<HTMLTextAreaElement>("#new-component-description")!.value);
+    transferTarget = component.uuid; addComponentOpen = false; mark(); render();
+  }));
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-local-component]").forEach(e => e.onchange = () => void run(() => {
+    if (!editable()) return;
+    const component = body()["system-implementation"].components.find((c: Json) => c.uuid === e.dataset.localComponent);
+    if (!component || importedComponentIds(baseline.components).has(component.uuid) || component.type === "this-system") throw Error("Choose an editable local component");
+    const field = e.dataset.componentField!, value = e.value.trim();
+    if (!value || (field === "title" && value.length > 120)) throw Error("Enter a component name and description");
+    if (field === "title" && body()["system-implementation"].components.some((c: Json) => c.uuid !== component.uuid && c.title.toLowerCase() === value.toLowerCase())) throw Error("That component name already exists");
+    component[field] = value; mark(); render();
+  }));
   const group = document.querySelector<HTMLSelectElement>("#control-group");
   if (group) group.onchange = () => { controlGroup = group.value; applyControlFilter(); };
   if (tab === "Controls / Implementation") applyControlFilter();
@@ -358,15 +432,8 @@ function bind() {
   }
   document.querySelectorAll<HTMLSelectElement>("[data-section-status]").forEach(e => e.onchange = () => void run(() => {
     if (!editable()) return;
-    setSectionStatus(body(), reqFor(e), controlFor(e), e.dataset.sectionStatus!, e.value, baseline.components);
+    setSectionStatus(body(), reqFor(e), controlFor(e), e.dataset.sectionStatus!, e.value, baseline.components, e.dataset.implementationComponent);
     mark(); render();
-  }));
-  document.querySelectorAll<HTMLSelectElement>("[data-completion]").forEach(e => e.onchange = () => void run(() => {
-    if (!editable()) return;
-    const req = reqFor(e), control = controlFor(e);
-    if (e.value === "implemented" && !progress(req, control).allComplete) throw Error("Complete every required section first");
-    setProp(req, "completion-decision", e.value === "auto" ? undefined : e.value);
-    syncProgress(req, control); mark(); render();
   }));
   document.querySelectorAll<HTMLSelectElement>("[data-req-role]").forEach(e => e.onchange = () => {
     if (!editable()) return;
@@ -375,14 +442,12 @@ function bind() {
     else delete req["responsible-roles"];
     mark();
   });
-  document.querySelectorAll<HTMLTextAreaElement>("[data-system-description], [data-bycomponent], [data-statement], [data-statement-remarks], [data-control-remarks]").forEach(e => e.oninput = () => {
+  document.querySelectorAll<HTMLTextAreaElement>("[data-bycomponent], [data-statement], [data-component-remarks], [data-control-remarks]").forEach(e => e.oninput = () => {
     if (!editable()) return;
     const req = reqFor(e);
     if (e.hasAttribute("data-control-remarks")) { if (e.value) req.remarks = e.value; else delete req.remarks; }
-    else if (e.dataset.statementRemarks) {
-      const statement = ensureStatement(req, e.dataset.statementRemarks);
-      if (e.value) statement.remarks = e.value; else delete statement.remarks;
-    } else {
+    else if (e.dataset.componentRemarks) {
+      setComponentRemarks(e.dataset.statement ? ensureStatement(req, e.dataset.statement) : req, e.dataset.componentRemarks, e.value);    } else {
       const target = e.dataset.statement ? ensureStatement(req, e.dataset.statement) : req;
       setDescription(target, e.dataset.bycomponent || systemId, e.value);
     }
@@ -478,12 +543,12 @@ function bind() {
   );
 }
 async function save() {
+  systemComponent(body());
   // Persist the same section/component roll-up that the user reviewed, including
-  // conservative contributions from older published components.
+  // statement-specific contributions from selected published components.
   for (const row of rows()) {
     const req = requirement(body(), row.control.id);
-    Object.assign(req, effectiveRequirement(body(), req, row.control, baseline.components));
-    if (prop(req, "status-tracking")) syncProgress(req, row.control);
+    applyComponentStatements(body(), req, row.control, baseline.components, false);
   }
   errors = validate(current!.oscal);
   if (errors.length) {

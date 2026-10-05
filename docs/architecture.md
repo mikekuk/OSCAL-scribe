@@ -24,3 +24,10 @@ Resource group, Standard Static Web App (required for linked Functions), Linux C
 ## Assumptions and deployment decisions
 The demo offers one seven-control worked profile selected from the pinned official SP800-53 Rev5 catalogue, with assigned ODPs and added statement context. Original Low/Moderate profiles are retained as reference sources rather than demo choices. Publication requires the separate explicit demo operation. Fictional SOC covers centralized logging, monitoring, incident response and threat monitoring; coverage is explicitly partial with system responsibilities. No compliance claim. Default UI has no sample data or mock authentication; offline demo server binds loopback only and is separate from production Functions.
 Azure tenant/subscription, region, budget and initial user assignments require user input before deployment. Azure DevOps organization/service connections require account setup; scripts and pipelines are prepared first. No major architectural substitution is proposed.
+
+
+## Component implementation editing
+
+The SSP holds one requirement per baseline control. Component-specific descriptions, remarks and native `implementation-status` fields live in requirement/statement `by-components` entries. System is the default SSP-local component; additional local components support separate Windows/Linux implementations without duplicating baseline controls. Published components carry source links and blue origin styling, not a custom Inherited status.
+
+Shared implementation helpers validate copy/move batches before mutation, preserve destination work, allocate independent UUIDs for copies, and calculate completion across every assigned component. Imports run on selection; ordinary view/save operations never reimport templates or restore moved assignments. The API persists these changes through the existing versioned SSP save endpoint and validates the same OSCAL schema and references. See [control workspace](control-workspace.md) for behaviour and maintenance details.

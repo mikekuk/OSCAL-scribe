@@ -3,11 +3,11 @@
 
 /* Control cards share Lens' native details/summary interaction. Status uses a
    tinted surface, a contrasting edge and text so it never relies on colour alone. */
-.status-not-set{--status-edge:#b93b38;--status-bg:#fff0ef;--status-ink:#8b2524}
+.status-planned{--status-edge:#b93b38;--status-bg:#fff0ef;--status-ink:#8b2524}
 .status-partial{--status-edge:#bd7515;--status-bg:#fff1db;--status-ink:#80500a}
 .status-implemented{--status-edge:#348253;--status-bg:#eaf6ee;--status-ink:#245b38}
 .status-alternative{--status-edge:#a38b00;--status-bg:#fffbd3;--status-ink:#655600}
-.status-component{--status-edge:#3977b9;--status-bg:#eaf3ff;--status-ink:#24558a}
+.origin-imported{--status-edge:#3977b9;--status-bg:#eaf3ff;--status-ink:#24558a}
 .status-not-applicable{--status-edge:#7b8490;--status-bg:#f0f2f5;--status-ink:#47515f}
 .control-toolbar{grid-template-columns:2fr 1fr;align-items:end}
 .control-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
@@ -39,3 +39,16 @@
 [hidden]{display:none!important}
 @media(max-width:1000px){.control-card>summary{flex-wrap:wrap;gap:9px}.completion-count{margin-left:auto}.control-heading{min-width:130px}.control-toolbar{grid-template-columns:1fr}.control-body{padding:15px}}
 @media(max-width:550px){.control-card>summary .status-badge{margin-left:25px}.completion-count{white-space:normal}.statement-card>summary{flex-wrap:wrap}.statement-body{padding:12px}}
+
+/* Imported is origin styling only; status badges retain their standard state. */
+.component-implementation{border:1px solid var(--status-edge);border-left:5px solid var(--status-edge);border-radius:8px;background:var(--status-bg);margin:16px 0}
+.component-implementation>summary{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:15px}.component-implementation>summary strong{flex:1}
+.component-implementation-body{padding:18px;background:#fff}.transfer-toolbar{padding:18px;background:#f4f6f2;border:1px solid #dce3d9;border-radius:8px;margin-bottom:20px}.transfer-toolbar p{font-size:13px}.transfer-toolbar button{margin-top:8px}
+.imported-component{border-left:5px solid #3977b9}.control-card>summary input{flex:none}.control-toolbar{grid-template-columns:2fr 1fr 1fr}
+@media(max-width:1000px){.control-toolbar{grid-template-columns:1fr}}
+/* Native selects can impose a minimum width wider than a narrow component
+   panel. Let the grid shrink both fields instead of overflowing the page. */
+.transfer-toolbar .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.transfer-toolbar .field{min-width:0}.transfer-toolbar select{width:100%;min-width:0}
+@media(max-width:550px){.transfer-toolbar .form-grid{grid-template-columns:1fr}}
+
+.component-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.component-heading p{flex:1}.component-add{font-size:23px;line-height:1;width:36px;height:36px;padding:0;flex:none}
