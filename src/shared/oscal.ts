@@ -71,7 +71,7 @@ export function createSsp(
           {
             uuid: system,
             type: "this-system",
-            title: name,
+            title: "System",
             description: "The system covered by this plan.",
             status: { state: "under-development" },
           },
@@ -89,15 +89,15 @@ export function createSsp(
                 uuid: uuid(),
                 "component-uuid": system,
                 description: "Implementation not yet documented.",
+                "implementation-status": { state: "planned" },
               },
             ],
-            props: [
-              {
-                name: "implementation-status",
-                ns: "https://oscal-scribe.example/ns",
-                value: "planned",
-              },
-            ],
+            statements: statementParts(r.control).length ? statementParts(r.control).map(part => ({
+              uuid: uuid(),
+              "statement-id": part.id,
+              "by-components": [{ uuid: uuid(), "component-uuid": system,
+                description: "Implementation not yet documented.", "implementation-status": { state: "planned" } }],
+            })) : undefined,
           }),
         ),
       },
