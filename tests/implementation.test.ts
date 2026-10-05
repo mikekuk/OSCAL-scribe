@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createSsp, integrity, statementParts } from "../src/shared/oscal";
-import { addRole, removeRole, setSectionStatus, progress, effectiveRequirement, removeComponent, requirement, setDescription, applyComponentStatements, sectionStatus, systemComponent, addLocalComponent, transferControls, assignedComponentIds, componentProgress, deleteLocalComponent, deleteControlAssignment, NS } from "../src/shared/implementation";
+import { addRole, removeRole, setSectionStatus, progress, effectiveRequirement, removeComponent, requirement, setDescription, applyComponentStatements, sectionStatus, systemComponent, addLocalComponent, transferControls, assignedComponentIds, componentProgress, deleteLocalComponent, deleteControlAssignment } from "../src/shared/implementation";
 import { filterControls, renderControlCards } from "../src/web/control-view";
 import { flatten } from "../src/shared/lens/engine.mjs";
 import { validate } from "../src/shared/validation";
@@ -16,7 +16,7 @@ function fixture() {
   const system = systemComponent(b).uuid;
   const component = { uuid: "11111111-1111-4111-8111-111111111111", type: "service", title: "Shared service", description: "Shared implementation" };
   b["system-implementation"].components.push({ ...component, status: { state: "operational" } });
-  const contribution: any = { "control-id": "ac-1", description: "Shared contribution", props: [{ name: "implementation-status", ns: NS, value: "partial" }] };
+  const contribution: any = { "control-id": "ac-1", description: "Shared contribution" };
   const definitions = [{ "component-definition": { uuid: "44444444-4444-4444-8444-444444444444", components: [{ ...component, "control-implementations": [{ "implemented-requirements": [contribution] }] }] } }];
   return { doc, b, req, system, control, profile, component, contribution, definitions };
 }
@@ -79,22 +79,22 @@ test("published sections inherit automatically and an entirely inherited parent 
 });
 test("whole-control claims and unknown statements cannot imply section coverage", () => {
   const { b, req, system, control, contribution, definitions } = fixture();
-  contribution.props[0].value = "implemented";
   applyComponentStatements(b, req, control, definitions);
   assert.equal(progress(req, control, system).complete, 0);
-  contribution.statements = [{ "statement-id": "a", description: "Planned work", props: [{ name: "implementation-status", value: "planned" }] },
+  contribution.statements = [{ "statement-id": "a", description: "Published work" },
     { "statement-id": "outside-profile", description: "Must not be imported" }];
   applyComponentStatements(b, req, control, definitions);
   assert.equal(req.statements.length, 2);
-  assert.equal(progress(req, control, system).complete, 0);
+  assert.equal(progress(req, control, system).complete, 1);
   assert.throws(() => setSectionStatus(b, req, control, "b", "component:missing", definitions), /Unknown implementation status/);
   assert.throws(() => setSectionStatus(b, req, control, "missing", "implemented", definitions), /Unknown statement/);
 });
-test("partial contributions retain System status and narrative through component removal", () => {
+test("SSP component status edits and System narratives survive reimport and component removal", () => {
   const { b, req, system, control, component, contribution, definitions, doc } = fixture();
-  contribution.statements = [{ "statement-id": "a", description: "Partial section", props: [{ name: "implementation-status", value: "partial" }] },
+  contribution.statements = [{ "statement-id": "a", description: "Published section" },
     { "statement-id": "b", description: "Complete section" }];
   applyComponentStatements(b, req, control, definitions);
+  setSectionStatus(b, req, control, "a", "partial", definitions, component.uuid);
   const s = req.statements[0], id = s.uuid;
   assert.equal(sectionStatus(s, system), "partial");
   setDescription(s, system, "The system completes the remaining work.");
@@ -140,15 +140,14 @@ test("multiple unrelated components combine section coverage and fall back indep
   noStatusProps(doc);
   assert.deepEqual(validate(doc), []);
 });
-test("legacy statement props migrate to native component statuses without dropping unrelated props", () => {
+test("standard properties remain intact while progress uses native statuses", () => {
   const { b, req, system, control, definitions, doc } = fixture();
-  req.props = [{ name: "status-tracking", ns: NS, value: "sections" }];
   const s = req.statements[0];
-  delete s["by-components"];
-  s.props = [{ name: "implementation-status", ns: NS, value: "implemented" }, { name: "note", value: "Keep me" }];
+  s.props = [{ name: "label", value: "First section" }];
+  setSectionStatus(b, req, control, "a", "implemented", definitions);
   applyComponentStatements(b, req, control, definitions);
   assert.equal(sectionStatus(s, system), "implemented");
-  assert.equal(s.props[0].name, "note");
+  assert.deepEqual(s.props, [{ name: "label", value: "First section" }]);
   noStatusProps(doc);
   assert.deepEqual(validate(doc), []);
 });
@@ -197,7 +196,7 @@ test("worked example assigns all published statements solely to the imported com
   const system = systemComponent(b).uuid, definition = JSON.parse(await readFile("demo/soc.json", "utf8")), component = definition["component-definition"].components[0];
   const definitions = [definition];
   const published = new Set(component["control-implementations"].flatMap((i: any) => i["implemented-requirements"].flatMap((r: any) => r.statements.map((s: any) => {
-    assert.equal(s.props.find((p: any) => p.name === "implementation-status").value, "implemented");
+    assert.equal(s.props, undefined);
     return s["statement-id"];
   }))));
   assert.equal(published.size, 16);
@@ -302,15 +301,15 @@ test("copy remaps cross-entry references while move retains implementation ident
   assert.deepEqual(validate(doc), []);
 });
 
-test("partial imports remove matching System work and leave unpublished sections assigned", () => {
+test("published statements replace System work and omitted sections remain assigned", () => {
   const { b, req, system, control, contribution, definitions, doc } = fixture();
   setSectionStatus(b, req, control, "a", "implemented", definitions);
-  contribution.statements = [{ "statement-id": "a", description: "Published partial implementation", props: [{ name: "implementation-status", value: "partial" }] }];
+  contribution.statements = [{ "statement-id": "a", description: "Published implementation" }];
   applyComponentStatements(b, req, control, definitions);
   assert.ok(req.statements[0]["by-components"].every((c: any) => c["component-uuid"] !== system));
   assert.equal(req.statements[1]["by-components"][0]["component-uuid"], system);
-  assert.equal(sectionStatus(req.statements[0]), "partial");
-  contribution.statements.push({ "statement-id": "b", description: "Published planned implementation", props: [{ name: "implementation-status", value: "planned" }] });
+  assert.equal(sectionStatus(req.statements[0]), "implemented");
+  contribution.statements.push({ "statement-id": "b", description: "Another published implementation" });
   applyComponentStatements(b, req, control, definitions);
   assert.equal(assignedComponentIds(req).has(system), false);
   assert.equal(assignedComponentIds(effectiveRequirement(b, req, control, definitions)).has(system), false);
