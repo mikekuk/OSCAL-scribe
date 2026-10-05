@@ -163,6 +163,7 @@ test("published demo preserves NIST statements and resolves every example ODP an
   assert.deepEqual(rows.find(r => r.control.id === "au-6").parameters["au-06_odp.01"].values, ["daily, with continuous triage of high-severity alerts"]);
   const component = release.components[0];
   assert.deepEqual(validate(component), []);
+  assert.doesNotMatch(JSON.stringify(component), /"props"/);
   const implementation = component["component-definition"].components[0]["control-implementations"][0];
   assert.equal(implementation.source, p.path);
   assert.deepEqual(implementation["implemented-requirements"].map((r: any) => r["control-id"]).sort(),
@@ -173,7 +174,7 @@ test("published demo preserves NIST statements and resolves every example ODP an
     assert.ok(requirement.statements.every((s: any) => parts.some(p => p.id === s["statement-id"])), "only valid covered sections are published");
     for (const statement of requirement.statements) {
       assert.ok(statement.description.length > 40);
-      assert.equal(statement.props.find((p: any) => p.name === "implementation-status").value, "implemented");
+      assert.equal(statement.props, undefined, "published statements need no custom status properties");
     }
   }
 });

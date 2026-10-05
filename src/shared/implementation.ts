@@ -2,29 +2,16 @@ import type { Json } from "./types";
 import { statementParts, uuid } from "./oscal";
 
 // Standard OSCAL states are independent of component origin and UI colour.
-export const NS = "https://oscal-scribe.example/ns";
 const emptyDescription = "Implementation not yet documented.";
 export type Status = "planned" | "partial" | "implemented" | "alternative" | "not-applicable";
 export const statusLabels: Record<Status, string> = {
   "planned": "Planned", partial: "Partial", implemented: "Implemented",
   alternative: "Alternative", "not-applicable": "Not applicable",
 };
-// Read legacy properties for migration only. New SSP status writes use no props.
-function legacyProp(node: Json, name: string): string | undefined {
-  return node.props?.find((p: Json) => p.name === name && (!p.ns || p.ns === NS || p.ns === "http://csrc.nist.gov/ns/oscal"))?.value;
-}
-function declaredState(node?: Json): string | undefined {
-  return node?.["implementation-status"]?.state ?? legacyProp(node || {}, "implementation-status");
-}
+// SSP progress comes only from OSCAL's native by-components status field.
 function declared(node?: Json): Status {
-  const state = declaredState(node);
+  const state = node?.["implementation-status"]?.state;
   return ["implemented", "partial", "alternative", "not-applicable"].includes(state || "") ? state as Status : "planned";
-}
-function clearLegacyStatus(node: Json) {
-  if (!node.props) return;
-  node.props = node.props.filter((p: Json) => !(["implementation-status", "implementation-component", "status-tracking", "completion-decision"].includes(p.name)
-    && (!p.ns || p.ns === NS || p.ns === "http://csrc.nist.gov/ns/oscal")));
-  if (!node.props.length) delete node.props;
 }
 export function systemComponent(b: Json): Json {
   const components = b["system-implementation"].components;
@@ -60,14 +47,6 @@ function ensureBy(node: Json, componentId: string): Json {
 function writeStatus(by: Json, status: Status) {
   by["implementation-status"] = { ...by["implementation-status"], state: status };
 }
-function migrateStatus(node: Json, systemId: string) {
-  const status = legacyProp(node, "implementation-status");
-  if (status) {
-    const by = ensureBy(node, legacyProp(node, "implementation-component") || systemId);
-    if (!by["implementation-status"]) writeStatus(by, declared(node));
-  }
-  clearLegacyStatus(node);
-}
 export function contributionList(b: Json, definitions: Json[], controlId: string) {
   const selected = new Set(b["system-implementation"].components.map((c: Json) => c.uuid));
   return definitions.flatMap(d => d["component-definition"]?.components || [])
@@ -75,15 +54,6 @@ export function contributionList(b: Json, definitions: Json[], controlId: string
     .flatMap((c: Json) => (c["control-implementations"] || []).flatMap((ci: Json) =>
       (ci["implemented-requirements"] || []).filter((r: Json) => r["control-id"] === controlId)
         .map((r: Json) => ({ component: c, requirement: r }))));
-}
-export function contributionStatus(contribution: { requirement: Json }, statementId?: string): Status {
-  const r = contribution.requirement;
-  const section = r.statements?.find((s: Json) => s["statement-id"] === statementId);
-  if (statementId && !section) return "planned";
-  const node = statementId ? section : r;
-  // Component-definition statements are implementation declarations. Explicit
-  // partial/planned publisher properties are read, never copied into SSP props.
-  return declaredState(node) ? declared(node) : section ? "implemented" : "partial";
 }
 export function sectionStatus(statement: Json | undefined, _systemId?: string): Status {
   return rollup((statement?.["by-components"] || []).map(declared));
@@ -120,12 +90,10 @@ export function progress(req: Json, control: Json, systemId?: string) {
  * The UI combines these to show overall control completion. */
 export function syncProgress(b: Json, req: Json, control: Json) {
   const systemId = systemComponent(b).uuid;
-  migrateStatus(req, systemId);
   const parts = statementParts(control);
   if (!parts.length) return; // Preserve valid control-level-only implementations.
   const statements: Json[] = parts.map(p => ensureStatement(req, p.id));
   for (const statement of statements) {
-    migrateStatus(statement, systemId);
     // System is a fallback only for unassigned sections. Do not silently add it
     // back after a move to Windows/Linux, or create a second obligation on import.
     if (!statement["by-components"]?.length) {
@@ -156,7 +124,6 @@ export function setSectionStatus(b: Json, req: Json, control: Json, id: string, 
   const by = statement["by-components"]?.find((c: Json) => c["component-uuid"] === componentId);
   if (!by) throw Error("Assign this section to the component before editing its status");
   writeStatus(by, choice as Status);
-  clearLegacyStatus(statement);
   syncProgress(b, req, control);
 }
 /** Import runs on selection, not on view/save. Otherwise saving would restore
@@ -164,12 +131,10 @@ export function setSectionStatus(b: Json, req: Json, control: Json, id: string, 
  * Only exact statement IDs receive a source component's implementation. */
 export function applyComponentStatements(b: Json, req: Json, control: Json, definitions: Json[], importPublished = true) {
   const systemId = systemComponent(b).uuid;
-  migrateStatus(req, systemId);
   const contributions = contributionList(b, definitions, control.id);
   let importedAny = false;
   for (const part of statementParts(control)) {
     const statement = ensureStatement(req, part.id);
-    migrateStatus(statement, systemId);
     let importedImplementation = false;
     for (const c of importPublished ? contributions : []) {
       const source = c.requirement.statements?.find((s: Json) => s["statement-id"] === part.id);
@@ -182,14 +147,14 @@ export function applyComponentStatements(b: Json, req: Json, control: Json, defi
         by.links = [{ rel: "imported-from", href: sourceHref }];
       }
       by.description = source.description || c.requirement.description || "Published component implementation.";
-      const state = contributionStatus(c, part.id);
-      writeStatus(by, state);
+      // Publishing the exact statement declares coverage; omitted statements stay local.
+      writeStatus(by, "implemented");
       importedImplementation = true;
     }
     if (importedImplementation) {
       importedAny = true;
-      // Selection assigns published sections to their source, including partial
-      // and planned contributions. System must not retain a duplicate obligation.
+      // Selection assigns published sections to their source.
+      // System must not retain a duplicate obligation.
       statement["by-components"] = statement["by-components"].filter((c: Json) =>
         c["component-uuid"] !== systemId);
     }
@@ -220,7 +185,6 @@ export function removeComponent(b: Json, id: string, rows: any[], definitions: J
   for (const row of rows) {
     const req = requirement(b, row.control.id);
     for (const node of [req, ...(req.statements || [])]) {
-      if (legacyProp(node, "implementation-component") === id) clearLegacyStatus(node);
       if (node["by-components"]) {
         node["by-components"] = node["by-components"].filter((c: Json) => c["component-uuid"] !== id);
         if (!node["by-components"].length) delete node["by-components"];

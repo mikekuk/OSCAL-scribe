@@ -3,7 +3,7 @@
     "uuid": "619ea8ee-ea92-4e27-b96b-db1382293c84",
     "metadata": {
       "title": "Fictional Company SOC \u2014 worked implementation examples \u2014 DEMO ONLY",
-      "version": "4.0.0",
+      "version": "5.0.0",
       "oscal-version": "1.2.2",
       "last-modified": "2026-10-05T00:00:00Z",
       "remarks": "Fictional training example selected from NIST SP800-53 Rev. 5.2.0. This is not a NIST Low or Moderate baseline, a complete security requirement set, or evidence of compliance. All ODP values and additional context are illustrative company assumptions."
@@ -28,33 +28,12 @@
                   {
                     "statement-id": "au-2_smt.b",
                     "uuid": "35e531c4-d23d-5c76-98fe-57b06bc6ef10",
-                    "description": "The SOC coordinates event selection with incident response, platform operations and audit stakeholders, recording agreed event requirements in the telemetry register.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "The SOC coordinates event selection with incident response, platform operations and audit stakeholders, recording agreed event requirements in the telemetry register."
                   },
                   {
                     "statement-id": "au-2_smt.e",
                     "uuid": "931b9225-47ca-5137-9509-58160e03df21",
-                    "description": "The SOC reviews and updates the event-selection matrix quarterly and after material changes or incidents, retaining the review decisions.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
-                  }
-                ],
-                "props": [
-                  {
-                    "name": "implementation-status",
-                    "ns": "https://oscal-scribe.example/ns",
-                    "value": "partial"
+                    "description": "The SOC reviews and updates the event-selection matrix quarterly and after material changes or incidents, retaining the review decisions."
                   }
                 ]
               },
@@ -66,57 +45,22 @@
                   {
                     "statement-id": "au-6_smt.a",
                     "uuid": "6afbff59-047c-502b-b66f-943d5e9e5fe5",
-                    "description": "SOC analysts review centralized audit records daily and triage high-severity alerts continuously. Saved queries detect repeated authentication failures, unexpected privilege changes, disabled logging and suspicious transfers; analysts assess potential impact.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "SOC analysts review centralized audit records daily and triage high-severity alerts continuously. Saved queries detect repeated authentication failures, unexpected privilege changes, disabled logging and suspicious transfers; analysts assess potential impact."
                   },
                   {
                     "statement-id": "au-6_demo_review-evidence",
                     "uuid": "1ebaf2d9-fee0-52f4-a1e9-ab0b7e894122",
-                    "description": "Each SOC daily review records its query period, analyst, findings and linked case IDs. Analysts investigate missing-log alerts as coverage issues even when no threat alert is raised.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "Each SOC daily review records its query period, analyst, findings and linked case IDs. Analysts investigate missing-log alerts as coverage issues even when no threat alert is raised."
                   },
                   {
                     "statement-id": "au-6_smt.b",
                     "uuid": "7975ca77-9481-52f1-abb7-e3b32d53ec8f",
-                    "description": "SOC analysts report findings to the SOC duty lead and affected system owner through the incident case and duty notification channels.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "SOC analysts report findings to the SOC duty lead and affected system owner through the incident case and duty notification channels."
                   },
                   {
                     "statement-id": "au-6_smt.c",
                     "uuid": "90cc3fd4-e4bd-595b-82b8-6610875fee62",
-                    "description": "The SOC duty lead adjusts review frequency, analysis scope and reporting when credible threat intelligence, law-enforcement information or changed risk warrants increased coverage; the decision is recorded in the review log.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
-                  }
-                ],
-                "props": [
-                  {
-                    "name": "implementation-status",
-                    "ns": "https://oscal-scribe.example/ns",
-                    "value": "implemented"
+                    "description": "The SOC duty lead adjusts review frequency, analysis scope and reporting when credible threat intelligence, law-enforcement information or changed risk warrants increased coverage; the decision is recorded in the review log."
                   }
                 ]
               },
@@ -128,33 +72,12 @@
                   {
                     "statement-id": "ir-4_smt.b",
                     "uuid": "65d0b7ba-1f47-5dac-89a6-c3722f215d47",
-                    "description": "The SOC incident manager coordinates incident handling with business continuity staff and records recovery dependencies and agreed actions in the case timeline.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "The SOC incident manager coordinates incident handling with business continuity staff and records recovery dependencies and agreed actions in the case timeline."
                   },
                   {
                     "statement-id": "ir-4_smt.d",
                     "uuid": "df2cf93e-6244-5bfa-b3df-31387b17d189",
-                    "description": "The SOC uses a common severity matrix, case checklist, escalation timetable and closure review across onboarded systems to make the rigor, scope and results of incident handling comparable and predictable.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
-                  }
-                ],
-                "props": [
-                  {
-                    "name": "implementation-status",
-                    "ns": "https://oscal-scribe.example/ns",
-                    "value": "partial"
+                    "description": "The SOC uses a common severity matrix, case checklist, escalation timetable and closure review across onboarded systems to make the rigor, scope and results of incident handling comparable and predictable."
                   }
                 ]
               },
@@ -166,21 +89,7 @@
                   {
                     "statement-id": "ir-5_smt",
                     "uuid": "3161226e-c2fd-585d-bc82-4e7dffaf45a9",
-                    "description": "The SOC tracks every reported incident in a uniquely numbered case, documenting affected assets, severity, discovery time, evidence references, actions, owner and status. Analysts update timelines at handover and the incident manager reviews open cases daily through approved closure. Case histories and closure reviews are example evidence.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
-                  }
-                ],
-                "props": [
-                  {
-                    "name": "implementation-status",
-                    "ns": "https://oscal-scribe.example/ns",
-                    "value": "implemented"
+                    "description": "The SOC tracks every reported incident in a uniquely numbered case, documenting affected assets, severity, discovery time, evidence references, actions, owner and status. Analysts update timelines at handover and the incident manager reviews open cases daily through approved closure. Case histories and closure reviews are example evidence."
                   }
                 ]
               },
@@ -192,93 +101,37 @@
                   {
                     "statement-id": "si-4_smt.a",
                     "uuid": "2ef3f530-f29e-53ca-991a-641a8752da26",
-                    "description": "For onboarded assets, the SOC continuously monitors central logs, endpoint alerts and network-flow records for attacks and unauthorized connections using the configured monitoring objectives.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "For onboarded assets, the SOC continuously monitors central logs, endpoint alerts and network-flow records for attacks and unauthorized connections using the configured monitoring objectives."
                   },
                   {
                     "statement-id": "si-4_smt.a.1",
                     "uuid": "679afac2-9b5d-57a9-88c5-26280a37f757",
-                    "description": "SOC detection rules correlate credential misuse, malicious execution and suspected exfiltration indicators against the assigned monitoring objectives; alerts become triaged investigation cases.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "SOC detection rules correlate credential misuse, malicious execution and suspected exfiltration indicators against the assigned monitoring objectives; alerts become triaged investigation cases."
                   },
                   {
                     "statement-id": "si-4_smt.a.2",
                     "uuid": "7a3c09e6-7766-5250-b735-034fde95968a",
-                    "description": "The SOC analyzes endpoint and network-flow telemetry for unauthorized local, network and remote connections, recording and investigating detections.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "The SOC analyzes endpoint and network-flow telemetry for unauthorized local, network and remote connections, recording and investigating detections."
                   },
                   {
                     "statement-id": "si-4_smt.b",
                     "uuid": "2231b7a9-0de3-575c-9136-7c657cc70e90",
-                    "description": "SOC analysts correlate centralized logs, endpoint detection alerts and network-flow analysis to identify unauthorized system use and record the results in cases.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "SOC analysts correlate centralized logs, endpoint detection alerts and network-flow analysis to identify unauthorized system use and record the results in cases."
                   },
                   {
                     "statement-id": "si-4_smt.d",
                     "uuid": "9206ff12-f9d3-54f5-969c-aceeb58faec4",
-                    "description": "SOC analysts investigate detected events and anomalies, correlate related evidence, record findings and recommend response actions in the case timeline.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "SOC analysts investigate detected events and anomalies, correlate related evidence, record findings and recommend response actions in the case timeline."
                   },
                   {
                     "statement-id": "si-4_smt.e",
                     "uuid": "cc436299-b971-54e5-a17b-94ef24253703",
-                    "description": "The SOC duty lead adjusts monitoring intensity and detection rules when risk or credible threat information changes, recording the change and rationale.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
+                    "description": "The SOC duty lead adjusts monitoring intensity and detection rules when risk or credible threat information changes, recording the change and rationale."
                   },
                   {
                     "statement-id": "si-4_smt.g",
                     "uuid": "5a8bbe5d-d703-5bba-a39e-79d298774eb0",
-                    "description": "The SOC supplies triaged alerts and recommended actions to the duty lead and system owner as needed and provides a daily summary including coverage gaps.",
-                    "props": [
-                      {
-                        "name": "implementation-status",
-                        "ns": "https://oscal-scribe.example/ns",
-                        "value": "implemented"
-                      }
-                    ]
-                  }
-                ],
-                "props": [
-                  {
-                    "name": "implementation-status",
-                    "ns": "https://oscal-scribe.example/ns",
-                    "value": "partial"
+                    "description": "The SOC supplies triaged alerts and recommended actions to the duty lead and system owner as needed and provides a daily summary including coverage gaps."
                   }
                 ]
               }
