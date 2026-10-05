@@ -21,7 +21,7 @@ Application/client IDs and tenant/user object IDs are configuration, not passwor
 | --- | --- | --- |
 | Permission to enter Scribe | Enterprise application → Users and groups; Terraform `identity.tf` | Whether an Entra user is assigned `Scribe User` or `Security`. |
 | Permission to a particular SSP | Scribe → plan → Overview → Sharing | Read/edit grants stored against immutable target-tenant user object IDs. Owner and Security users administer plans. |
-| People accountable for the system | Scribe → People & Roles | System Security Officer, Senior Risk Owner, Security Architect, SSP Preparer. These are OSCAL document assignments; they grant no application access. |
+| People accountable for the system | Scribe → People & Roles | Four defaults: System Security Officer, Senior Risk Owner, Security Architect and SSP Preparer. Users may rename, add or delete any role, including SSO and SRO. These OSCAL document assignments grant no application access. |
 | Azure deployment/data access | Azure IAM, Cosmos data RBAC and Terraform | What operators, the Function managed identity and content publishers can do to infrastructure/data. These do not automatically grant Scribe user access. |
 
 ### End-user application roles
@@ -111,3 +111,9 @@ The supplied personal configuration uses the pipeline service principal as conte
 | Content publication returns 403 | Check the publishing identity, `COSMOS_ENDPOINT`, container-scoped Cosmos data role and propagation. A Scribe Security role does not grant direct database publication. |
 
 Read [the deployment runbook](deployment.md) before deleting or moving the environment. Resource-group deletion alone does not remove these directory objects.
+
+## Editable system roles
+
+In **People & Roles**, enter a name and choose **Add role**. Edit a role name in its card or use its **×** button to delete it. All four defaults, including System Security Officer and Senior Risk Owner, can be removed. Deleting a role clears references to it in the current SSP; shared person records and saved historical revisions remain intact. Assign a person to every remaining role before attestation. At least one defined, assigned role is needed to attest, and the selected attesting role must exist in the saved revision.
+
+See [the control workspace guide](control-workspace.md) for section status and shared-component completion.
