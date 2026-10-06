@@ -47,3 +47,11 @@ test('App Admin is a pipeline-managed role with separate assignments and scoped 
   assert.match(identity, /display_name\s*= "App Admin"/);
   assert.match(readFileSync('infrastructure/variables.tf','utf8'), /variable "app_admin_user_ids"/);
 });
+
+test('directory lookup grants Graph read permission to the runtime managed identity', () => {
+ const identity=readFileSync('infrastructure/identity.tf','utf8');
+ assert.match(identity,/resource "azuread_app_role_assignment" "directory_reader"/);
+ assert.match(identity,/principal_object_id\s*= azurerm_linux_function_app.api.identity\[0\].principal_id/);
+ assert.match(identity,/microsoft_graph.app_role_ids\["User.Read.All"\]/);
+ assert.ok(!identity.includes('app_role_ids["Directory.ReadWrite.All"]'));
+});

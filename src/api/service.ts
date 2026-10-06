@@ -1,3 +1,5 @@
+import type { Directory } from "./directory";
+import type { Person } from "../shared/types";
 import { AdminService, MAX_UPLOAD, type AdminStore } from "./admin";
 import { createHash, randomUUID } from "node:crypto";
 import { canRead, canEdit, canShare, canAttest, canAdminister } from "./authz";
@@ -48,6 +50,7 @@ export class Service {
     public repo: Repository,
     public content: ContentStore,
     public admin?: AdminStore,
+    public directory?: Directory,
   ) {}
   async request(
     user: User | undefined,
@@ -142,13 +145,34 @@ export class Service {
       this.valid(oscal, profile, release.id);
       await this.repo.create(
         s,
-        this.revision(s),
+        this.revision(s, await this.actorIdentity(user)),
         this.audit(s, user, "create"),
       );
       return s;
     }
     const s = await this.repo.get(p[1]);
     if (!s || !canRead(user, s)) throw new ApiError(404, "SSP not found");
+    if (p[2] === "people" && method === "POST") {
+      if (!canShare(user, s)) throw new ApiError(403, "Sharing permission required");
+      requireKeys(body, ["query"]);
+      if (!this.directory) throw new ApiError(503, "Directory lookup is unavailable");
+      return this.directory.search(user.tid, body.query);
+    }
+    if (p[2] === "identities" && method === "POST") {
+      requireKeys(body, ["ids"]);
+      if (!Array.isArray(body.ids) || body.ids.length > 100 || body.ids.some((id: any) => typeof id !== "string")) throw new ApiError(400, "Request up to 100 participant IDs");
+      const actors = await this.repo.revisionActors(s.sspId, body.ids);
+      const allowed = new Set([s.ownerId, s.modifiedBy, s.lastAttestation?.actor, ...s.access.map(a => a.oid), ...actors]);
+      if (body.ids.some((id: string) => !allowed.has(id))) throw new ApiError(403, "Only this plan’s participants can be resolved");
+      const people: Person[] = [];
+      let unavailable = false;
+      // Bound Graph concurrency and response size even for a plan with many authors.
+      const ids: string[] = [...new Set<string>(body.ids)];
+      for (let index = 0; index < ids.length && !unavailable; index += 5) await Promise.all(ids.slice(index, index + 5).map(async id => {
+        try { const person = await this.directory?.lookup(user.tid, id); if (person) people.push(person); if (!this.directory) unavailable = true; } catch { unavailable = true; }
+      }));
+      return { people, unavailable };
+    }
     if (method === "GET") {
       if (!p[2]) return s;
       if (p[2] === "revisions") {
@@ -209,7 +233,7 @@ export class Service {
       this.valid(document, profile, release.id);
       next.oscal = document;
       next.currentRevision++;
-      records.push(this.revision(next));
+      records.push(this.revision(next, await this.actorIdentity(user)));
     } else if (operation === "share" && method === "POST") {
       requireKeys(body, ["oid", "permission"]);
       if (
@@ -221,8 +245,12 @@ export class Service {
           "Entra object ID and read/edit/remove permission required",
         );
       next.access = next.access.filter((x) => x.oid !== body.oid);
-      if (body.permission !== "remove")
+      if (body.permission !== "remove") {
+        if (!this.directory) throw new ApiError(503, "Directory lookup is unavailable");
+        // Revalidate the selected ID against the tenant at commit time, not a client label/cache.
+        if (!await this.directory.lookup(user.tid, body.oid, true)) throw new ApiError(400, "This person is no longer available in the tenant");
         next.access.push({ oid: body.oid, permission: body.permission });
+      }
       if (next.access.length > 100)
         throw new ApiError(400, "Maximum 100 sharing entries");
     } else if (operation === "archive" && method === "POST") {
@@ -248,6 +276,7 @@ export class Service {
         sspId: s.sspId,
         revision: s.currentRevision,
         actor: user.oid,
+        actorIdentity: await this.actorIdentity(user),
         systemRole: body.systemRole,
         at: now,
         due: date.toISOString(),
@@ -266,12 +295,19 @@ export class Service {
     if (errors.length)
       throw new ApiError(422, "OSCAL validation failed", errors);
   }
-  revision(s: Ssp): Revision {
+  // A snapshot is display metadata only. Immutable IDs remain the audit and ACL keys.
+  private async actorIdentity(user: User): Promise<Person | undefined> {
+    try { const person = await this.directory?.lookup(user.tid, user.oid); if (person) return person; } catch { /* A directory outage must not prevent saving a plan. */ }
+    const displayName = user.displayName || user.email || user.userPrincipalName;
+    return displayName ? { oid: user.oid, displayName, ...(user.email ? { email: user.email } : {}), ...(user.userPrincipalName ? { userPrincipalName: user.userPrincipalName } : {}) } : undefined;
+  }
+  revision(s: Ssp, actorIdentity?: Person): Revision {
     return {
       id: "revision:" + s.currentRevision,
       sspId: s.sspId,
       revision: s.currentRevision,
       actor: s.modifiedBy,
+      ...(actorIdentity ? { actorIdentity } : {}),
       at: s.modifiedAt,
       releaseId: s.releaseId,
       profileId: s.profileId,

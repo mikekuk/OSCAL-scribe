@@ -44,3 +44,5 @@ All `/api/admin` routes require the verified `AppAdmin` app role. They accept no
 | GET | /api/admin/library/export | Export resolved source bundle for the controlled publication pipeline |
 
 Other requests retain their 1 MB limit; only authenticated AppAdmin library uploads get the larger bounded limit. DELETE does not require an `If-Match` header: its body carries the loaded version and the storage layer enforces ETags. Deletion conflicts return 409; invalid schemas/references return 422. There is no raw-edit or published-release-delete endpoint. See [admin/reference semantics](app-admin.md).
+
+Directory endpoints (same delegated Scribe authentication): `POST /ssps/{id}/people` with `{query}` requires sharing administration and returns up to 20 directory people; `POST /ssps/{id}/identities` with `{ids}` requires plan read access and resolves only existing participants (maximum 100 IDs). Sharing continues to accept `{oid, permission}`; read/edit grants now require a fresh target-tenant lookup. See [directory sharing](directory-sharing.md).

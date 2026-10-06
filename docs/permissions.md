@@ -77,7 +77,7 @@ An authorized administrator can use **Enterprise application → Users and group
 
 Choose one source of truth. If you remove a Terraform-managed assignment only in the portal, a later Terraform apply can recreate it. A portal-only assignment is not automatically imported into Terraform, and an empty Terraform user set does not revoke every unmanaged assignment. Reconcile portal additions/removals with the configuration/state or document the separately administered population.
 
-Once assigned, have the user sign out/in to obtain fresh role claims. For a Scribe User to access another person's plan, the owner or a Security user must also open that plan's **Overview → Sharing**, enter the user's object ID and choose Read or Edit. The current owner is not transferred by changing document roles or adding a sharing entry; there is no owner-transfer UI in this version.
+Once assigned, have the user sign out/in to obtain fresh role claims. For a Scribe User to access another person's plan, the owner, Security user or App Admin must also open that plan's **Overview → Sharing**, search by name or email, select the person and choose Read or Edit. The current owner is not transferred by changing document roles or adding a sharing entry; there is no owner-transfer UI in this version.
 
 ### Revocation and emergency access blocking
 
@@ -122,3 +122,5 @@ See [the control workspace guide](control-workspace.md) for section status and s
 ## App Admin setup
 
 Use the pipeline-managed role and assignment process in [App Admin and managed content](app-admin.md). It also documents permanent deletion, raw exploration, staged uploads, reference checks and publication. Existing Security assignments do not grant App Admin.
+
+Directory lookup setup, identity snapshots and failure handling are described in [Directory names and sharing](directory-sharing.md).

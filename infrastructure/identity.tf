@@ -78,3 +78,15 @@ resource "azuread_app_role_assignment" "app_admins" {
   principal_object_id = each.value
   resource_object_id  = azuread_service_principal.scribe.object_id
 }
+
+# Directory search runs on the API managed identity, never with browser credentials.
+# Application User.Read.All is Graph's least-privileged application role for /users.
+# This assignment grants admin consent and is reviewed in the infrastructure gate.
+data "azuread_service_principal" "microsoft_graph" {
+  client_id = "00000003-0000-0000-c000-000000000000"
+}
+resource "azuread_app_role_assignment" "directory_reader" {
+  principal_object_id = azurerm_linux_function_app.api.identity[0].principal_id
+  resource_object_id  = data.azuread_service_principal.microsoft_graph.object_id
+  app_role_id         = data.azuread_service_principal.microsoft_graph.app_role_ids["User.Read.All"]
+}

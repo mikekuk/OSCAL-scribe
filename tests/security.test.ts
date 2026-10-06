@@ -48,7 +48,7 @@ async function fixture() {
     s = new Service(repo, {
       active: async () => release,
       get: async () => release,
-    }),
+    }, undefined, { lookup: async (_tenant, oid) => ({ oid, displayName: "Test person" }), search: async () => [] }),
     doc = await s.request(B, "POST", "/api/ssps", {
       releaseId: "test",
       profileId: "low",

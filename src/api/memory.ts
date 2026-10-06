@@ -39,6 +39,9 @@ export class MemoryRepository implements Repository {
     this.current.delete(s.sspId);
     this.history.delete(s.sspId);
   }
+  async revisionActors(id: string, ids: string[]) {
+    return [...new Set((this.history.get(id) || []).filter(r => r.id.startsWith("revision:") && ids.includes(r.actor)).map(r => r.actor as string))];
+  }
   async records(id: string, prefix: string) {
     return structuredClone(
       (this.history.get(id) || []).filter((x) => x.id.startsWith(prefix)),
