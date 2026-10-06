@@ -1,8 +1,12 @@
+export interface Person { oid: string; displayName: string; email?: string; userPrincipalName?: string; guest?: boolean }
 export type Json = Record<string, any>;
 export interface User {
   oid: string;
   tid: string;
   roles: string[];
+  displayName?: string;
+  email?: string;
+  userPrincipalName?: string;
 }
 export interface Access {
   oid: string;
@@ -33,6 +37,7 @@ export interface Attestation {
   sspId: string;
   revision: number;
   actor: string;
+  actorIdentity?: Person;
   systemRole: string;
   at: string;
   due: string;
@@ -43,6 +48,7 @@ export interface Revision {
   sspId: string;
   revision: number;
   actor: string;
+  actorIdentity?: Person;
   at: string;
   releaseId: string;
   profileId: string;
@@ -67,6 +73,7 @@ export interface Repository {
   create(ssp: Ssp, revision: Revision, audit: Json): Promise<void>;
   commit(previous: Ssp, next: Ssp, records: Json[]): Promise<void>;
   records(id: string, prefix: string): Promise<Json[]>;
+  revisionActors(id: string, ids: string[]): Promise<string[]>;
   purge(ssp: Ssp): Promise<void>;
   adminPage(user: User, query: string, state: string, cursor?: string): Promise<{ items: Json[]; cursor?: string }>;
 }

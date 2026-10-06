@@ -35,6 +35,6 @@ export function authenticator(
       : [];
     if (!roles.some((r) => ["User", "Security", "AppAdmin"].includes(r)))
       throw Error("Application assignment required");
-    return { oid: p.oid, tid: tenantId, roles };
+    return { oid: p.oid, tid: tenantId, roles, ...(typeof p.name === "string" ? { displayName: p.name } : {}), ...(typeof p.email === "string" ? { email: p.email } : {}), ...(typeof p.preferred_username === "string" ? { userPrincipalName: p.preferred_username } : {}) };
   };
 }

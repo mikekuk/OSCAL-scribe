@@ -116,6 +116,14 @@ export class CosmosRepository implements Repository {
     catch (e: any) { if (e.code === 404) return; if (e.code === 412) throw new ApiError(409, "Deletion changed; reload and retry"); throw e; }
   }
 
+  async revisionActors(id: string, ids: string[]): Promise<string[]> {
+    // Resolve only requested actor IDs; never load OSCAL revision bodies for labels.
+    const { resources } = await this.container.items.query<string>({
+      query: 'SELECT DISTINCT VALUE c.actor FROM c WHERE c.sspId = @id AND STARTSWITH(c.id, "revision:") AND ARRAY_CONTAINS(@actors, c.actor)',
+      parameters: [{ name: "@id", value: id }, { name: "@actors", value: ids }],
+    }, { partitionKey: id }).fetchAll();
+    return resources;
+  }
   async records(id: string, prefix: string) {
     return (
       await this.container.items

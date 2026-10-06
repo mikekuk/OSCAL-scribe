@@ -1,3 +1,5 @@
+import { mountPeoplePicker, personLabel } from "./people-picker";
+import type { Person } from "../shared/types";
 import { componentTypes, localComponentType } from "../shared/component-types";
 import { showAdmin } from "./admin-view";
 import { PublicClientApplication } from "@azure/msal-browser";
@@ -10,6 +12,25 @@ import { addRole, removeRole, effectiveRequirement, requirement, ensureStatement
 import { filterControls, renderControlCards } from "./control-view";
 import "./style.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
+let identities = new Map<string, Person>();
+let selectedSharePerson: () => Person | undefined = () => undefined;
+const livePerson = (oid: string) => `<div data-live-person="${h(oid)}">${personLabel(oid, identities.get(oid))}</div>`;
+async function loadIdentities() {
+  const plan = current!;
+  const ids = [...new Set([plan.ownerId, plan.modifiedBy, ...plan.access.map(a => a.oid), ...history.filter(r => !r.actorIdentity).map(r => r.actor)])];
+  for (let start = 0; start < ids.length; start += 100) {
+    try {
+      const result = await api(`ssps/${plan.sspId}/identities`, "POST", { ids: ids.slice(start, start + 100) });
+      if (current !== plan) return;
+      for (const person of result.people) identities.set(person.oid, person);
+      // Update labels only: an arriving lookup must not reset a user's search or edits.
+      document.querySelectorAll<HTMLElement>("[data-live-person]").forEach(node => {
+        const oid = node.dataset.livePerson!; node.innerHTML = personLabel(oid, identities.get(oid));
+      });
+      if (result.unavailable) return;
+    } catch { /* Names are optional display data: opening an SSP must still work. */ }
+  }
+}
 let msal: PublicClientApplication | undefined,
   scopes: string[] = [],
   demo = false,
@@ -157,6 +178,7 @@ function renderHome() {
 }
 async function open(id: string) {
   current = await api("ssps/" + id);
+  identities = new Map();
   baseline = await api(`content/${current!.releaseId}/${current!.profileId}`);
   rowCache = undefined;
   controlQuery = "";
@@ -172,6 +194,7 @@ async function open(id: string) {
   dirty = false;
   errors = [];
   render();
+  void loadIdentities();
 }
 let rowCache: any[] | undefined;
 function rows() {
@@ -244,7 +267,7 @@ function section(): string {
   const b = body(),
     s = current!;
   if (tab === "Overview")
-    return `<div class="form-grid">${field("System name", "system-characteristics/system-name")}${field("Plan title", "metadata/title")}${field("System status", "system-characteristics/status/state", "select", ["under-development", "operational", "under-major-modification", "disposition", "other"])}${field("System description", "system-characteristics/description", "textarea")}</div><div class="metadata-grid">${info("Owner (Entra object ID)", s.ownerId)}${info("Created", s.createdAt)}${info("Modified", s.modifiedAt)}${info("Last attested", s.lastAttestation?.at)}${info("Next attestation due", s.lastAttestation?.due)}</div>${administer() ? `<hr><h3>Sharing</h3><p>Use the person's immutable object ID from this Entra tenant. They must also be assigned to the application.</p><div class="inline"><input id="share-oid" aria-label="Entra object ID" placeholder="Entra object ID"><select id="share-permission" aria-label="Permission"><option value="read">Read</option><option value="edit">Edit</option></select><button id="share">Share</button></div>${s.access.map((a) => `<p>${h(a.oid)} · ${a.permission} <button class="quiet" data-revoke="${h(a.oid)}">Remove access</button></p>`).join("")}<hr><button id="archive" class="quiet" ${s.archived ? "disabled" : ""}>Archive this plan</button>` : ""}`;
+    return `<div class="form-grid">${field("System name", "system-characteristics/system-name")}${field("Plan title", "metadata/title")}${field("System status", "system-characteristics/status/state", "select", ["under-development", "operational", "under-major-modification", "disposition", "other"])}${field("System description", "system-characteristics/description", "textarea")}</div><div class="metadata-grid"><div><small>Owner</small>${livePerson(s.ownerId)}</div>${info("Created", s.createdAt)}${info("Modified", s.modifiedAt)}${info("Last attested", s.lastAttestation?.at)}${info("Next attestation due", s.lastAttestation?.due)}</div>${administer() ? `<hr><h3>Sharing</h3><p>Find a person in this tenant and choose their access. They must also be assigned to Scribe; sharing does not invite users or grant application access.</p><div id="people-picker"></div><div class="inline"><select id="share-permission" aria-label="Permission"><option value="read">Read</option><option value="edit">Edit</option></select><button id="share">Share</button></div>${s.access.map((a) => `<div class="sharing-entry">${livePerson(a.oid)} · ${a.permission} <button class="quiet" data-revoke="${h(a.oid)}">Remove access</button></div>`).join("")}<hr><button id="archive" class="quiet" ${s.archived ? "disabled" : ""}>Archive this plan</button>` : ""}`;
   if (tab === "People & Roles")
     return `<p>Assign the people accountable for this system. Add or remove roles to fit this plan; these assignments do not grant access to Scribe.</p><div class="inline"><input id="new-role-title" aria-label="New role name" placeholder="Role name" maxlength="120" ${editable() ? "" : "disabled"}><button id="add-role" ${editable() ? "" : "disabled"}>Add role</button></div>${(b.metadata.roles || [])
       .map((role: Json) => {
@@ -262,7 +285,7 @@ function section(): string {
       .sort((a, b) => b.revision - a.revision)
       .map(
         (r) =>
-          `<section class="revision"><b>Revision ${r.revision}</b><span>${h(new Date(r.at).toLocaleString())}</span><small>Actor ${h(r.actor)}</small><button data-revision="${r.revision}" class="quiet">Download revision</button></section>`,
+          `<section class="revision"><b>Revision ${r.revision}</b><span>${h(new Date(r.at).toLocaleString())}</span><div><small>Saved by</small>${r.actorIdentity ? personLabel(r.actor, r.actorIdentity) : livePerson(r.actor)}${r.actorIdentity ? "<small>Name recorded at save time</small>" : ""}</div><button data-revision="${r.revision}" class="quiet">Download revision</button></section>`,
       )
       .join("")}`;
   return `<p>Schema validation checks structure and references. It does not certify that controls are effective.</p><button id="validate">Validate plan</button> <button id="export">Download OSCAL SSP</button> <button id="export-baseline" class="quiet">Download pinned baseline</button><div class="validation" role="status">${errors.length ? errors.map((e) => `<p>${h(e)}</p>`).join("") : "Run validation to check the current document."}</div><details><summary>Inspect OSCAL JSON</summary><pre>${h(JSON.stringify(current!.oscal, null, 2))}</pre></details>`;
@@ -496,14 +519,19 @@ function bind() {
   }));
   const on = (id: string, fn: () => any) =>
     document.querySelector("#" + id)?.addEventListener("click", () => run(fn));
+  const picker = document.querySelector<HTMLElement>("#people-picker");
+  selectedSharePerson = picker ? mountPeoplePicker(picker, query => api(`ssps/${current!.sspId}/people`, "POST", { query })) : () => undefined;
   on("share", async () => {
+    const person = selectedSharePerson();
+    if (!person) throw Error("Search for and select a person first");
     if (dirty) throw Error("Save your edits before changing sharing");
     current = await api(`ssps/${current!.sspId}/share`, "POST", {
-      oid: (document.querySelector("#share-oid") as HTMLInputElement).value,
+      oid: person.oid,
       permission: (
         document.querySelector("#share-permission") as HTMLSelectElement
       ).value,
     });
+    identities.set(person.oid, person);
     render();
   });
   document.querySelectorAll<HTMLElement>("[data-revoke]").forEach(

@@ -1,3 +1,4 @@
+import { GraphDirectory } from "./directory";
 import { CosmosAdminStore } from "./cosmos-admin";
 import { MAX_UPLOAD } from "./admin";
 import { app, HttpRequest, InvocationContext } from "@azure/functions";
@@ -10,6 +11,7 @@ const service = new Service(
   new CosmosRepository(db.container("ssps")),
   new CosmosContent(db.container("content")),
   new CosmosAdminStore(db),
+  new GraphDirectory(process.env.ENTRA_TENANT_ID!),
 );
 const auth = authenticator(
   process.env.ENTRA_TENANT_ID!,

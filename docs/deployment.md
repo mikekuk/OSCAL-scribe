@@ -227,3 +227,7 @@ Terraform/Node/Java versions and locked providers are explicit. Hosted image pat
 ## App Admin rollout
 
 The new App Admin role and optional `app_admin_user_ids` assignments are created by Terraform in Build and deploy, never by ad-hoc Azure CLI commands. Review its content-container runtime write permission in the infrastructure plan. Follow [App Admin setup and publication](app-admin.md) for configuration, sign-in refresh, raw data access, deletion and reference handling.
+
+## Directory-backed sharing rollout
+
+Build and deploy now grants Graph application `User.Read.All` to the Function managed identity through Terraform. Review the directory-wide read grant before approving the infrastructure plan. Browser users receive no Graph permission. See [Directory names and sharing](directory-sharing.md) for consent, data retention, supported guests and live acceptance checks.
