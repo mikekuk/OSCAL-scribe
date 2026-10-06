@@ -34,7 +34,8 @@ export class CosmosRepository implements Repository {
     const projection = 'c.sspId, c.ownerId, c.access, c.modifiedAt, c.currentRevision, c.version, c.archived, c.profileId, c.lastAttestation, c.oscal["system-security-plan"].metadata.title AS title, c.oscal["system-security-plan"]["system-characteristics"]["system-name"] AS systemName';
     const query = 'SELECT ' + projection + ' FROM c WHERE c.id = "current" AND c.tenantId = @tid AND (NOT IS_DEFINED(c.deleting) OR c.deleting = false)' + (privileged ? '' : ' AND (c.ownerId = @oid OR EXISTS(SELECT VALUE a FROM a IN c.access WHERE a.oid = @oid))') + ' ORDER BY c.sspId';
     const result = await this.container.items.query<Json>({ query, parameters: [{ name: '@tid', value: u.tid }, ...(!privileged ? [{name:'@oid',value:u.oid}] : [])] }, { maxItemCount: 25, continuationToken: cursor }).fetchNext();
-    return { items: result.resources, cursor: result.continuationToken || undefined };
+    // Empty Cosmos pages can omit resources; keep the JSON page contract intact.
+    return { items: result.resources ?? [], cursor: result.continuationToken || undefined };
   }
   async adminPage(user: User, query: string, state: string, cursor?: string) {
     const clauses = ['c.id = "current"', 'c.tenantId = @tenant'];
@@ -46,7 +47,7 @@ export class CosmosRepository implements Repository {
       query: 'SELECT c.sspId, c.version, c.archived, c.deleting, c.modifiedAt, c.oscal["system-security-plan"].metadata.title AS title FROM c WHERE ' + clauses.join(' AND ') + ' ORDER BY c.sspId',
       parameters: [{ name: "@tenant", value: user.tid }, ...(query ? [{ name: "@query", value: query.toLowerCase() }] : [])],
     }, { maxItemCount: 25, continuationToken: cursor }).fetchNext();
-    return { items: result.resources, cursor: result.continuationToken || undefined };
+    return { items: result.resources ?? [], cursor: result.continuationToken || undefined };
   }
   async create(s: Ssp, r: Json, a: Json) {
     await this.batch(
@@ -125,7 +126,7 @@ export class CosmosRepository implements Repository {
       query: 'SELECT c.id, c.revision, c.actor, c.actorIdentity, c.at, c.releaseId, c.profileId, c.hash, c.due, c.systemRole FROM c WHERE c.sspId = @id AND STARTSWITH(c.id, @prefix) ORDER BY c.id',
       parameters: [{name:'@id',value:id},{name:'@prefix',value:prefix}],
     }, { partitionKey: id, maxItemCount: 25, continuationToken: cursor }).fetchNext();
-    return { items: result.resources, cursor: result.continuationToken || undefined };
+    return { items: result.resources ?? [], cursor: result.continuationToken || undefined };
   }
 
 }
