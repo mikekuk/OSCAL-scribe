@@ -25,7 +25,7 @@ function noStatusProps(doc: any) {
 }
 test("SSP-local System tracks all non-inherited statements with native statuses", () => {
   const { doc, b, req, system, control, profile } = fixture();
-  assert.equal(systemComponent(b).title, "System");
+  assert.equal(systemComponent(b).title, "This system");
   assert.equal(req.statements.length, 2);
   assert.equal(progress(req, control, system).status, "planned");
   for (const [a, second, expected] of [["implemented", "partial", "partial"], ["implemented", "alternative", "implemented"], ["not-applicable", "not-applicable", "not-applicable"], ["alternative", "alternative", "alternative"], ["planned", "planned", "planned"]]) {
@@ -273,7 +273,7 @@ test("imported sources can be copied to local components but never moved or over
 });
 test("component metadata and transfer batches are validated before changing work", () => {
   const { b, req, system, control, definitions, doc } = fixture();
-  assert.throws(() => addLocalComponent(b, "System", "software", "Duplicate"), /already exists/);
+  assert.throws(() => addLocalComponent(b, "This system", "software", "Duplicate"), /already exists/);
   assert.throws(() => addLocalComponent(b, "", "software", "Empty"), /name/);
   const target = addLocalComponent(b, "Windows", "software", "Servers");
   const before = JSON.stringify(doc);
@@ -360,4 +360,24 @@ test("redundant and empty local components delete cleanly; System and imported o
   assert.throws(() => deleteLocalComponent(b, component.uuid, [{ control }], definitions), /additional local/);
   assert.throws(() => deleteControlAssignment(b, req, control, component.uuid, definitions), /Imported originals/);
   assert.deepEqual(validate(doc), []);
+});
+
+test("OSCAL types round-trip while only the default component represents this system", async () => {
+  const { componentTypes } = await import("../src/shared/component-types");
+  const { doc, b } = fixture();
+  const original = systemComponent(b);
+  for (const [type] of componentTypes) {
+    if (type === "this-system") continue;
+    const added = addLocalComponent(b, "Example " + type, type, "Component type example.");
+    assert.equal(added.type, type);
+    assert.equal(systemComponent(b).uuid, original.uuid, "External systems never become the whole-system fallback");
+  }
+  assert.equal(addLocalComponent(b, "Custom", " organization-defined ", "Local classification.").type, "organization-defined");
+  const before = JSON.stringify(doc);
+  assert.throws(() => addLocalComponent(b, "Duplicate whole system", "this-system", ""), /existing This system/);
+  assert.throws(() => addLocalComponent(b, "Invalid type", "  ", ""), /component type/);
+  assert.equal(JSON.stringify(doc), before);
+  const exported = JSON.parse(JSON.stringify(doc));
+  assert.deepEqual(validate(exported), []);
+  assert.equal(exported["system-security-plan"]["system-implementation"].components.filter((c: any) => c.type === "this-system").length, 1);
 });

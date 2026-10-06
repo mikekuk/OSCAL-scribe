@@ -71,7 +71,7 @@ export function createSsp(
           {
             uuid: system,
             type: "this-system",
-            title: "System",
+            title: "This system",
             description: "The system covered by this plan.",
             status: { state: "under-development" },
           },
