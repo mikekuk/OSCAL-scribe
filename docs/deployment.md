@@ -137,6 +137,29 @@ The publisher discovers the Cosmos endpoint using Reader on the selected applica
 Terraform state. Published releases remain immutable through normal publisher operations and the active pointer moves last.
 The API can write staged library data but its Cosmos role cannot modify the published `content` container.
 
+## Content publication fails to find Cosmos
+
+Backend setup (`pipelines/bootstrap.yml`) creates or updates **only Terraform state storage**. It does not recreate
+Cosmos after Operations `action: destroy`. A successful build also does not create resources when `deploy` is false.
+Use this order after a disposable test rebuild:
+
+1. Complete Backend setup with `config/test.json`, the existing service connection and protected variable group.
+2. Run **Build and deploy** (`azure-pipelines.yml`) on `main` with `deploy: true` and `deployApplication: true`.
+   Use the same `configFile` and `variableGroup`; complete plan approval and verify the infrastructure and application
+   deployment jobs succeed, not merely the Build stage.
+3. Run **Scribe – Demo content** (`pipelines/demo.yml`) with that same test configuration and its publisher connection.
+   The default personal connection is `oscal-scribe-azure`; use your existing exact connection name if different.
+
+If target discovery reports **zero** Cosmos accounts, check whether the infrastructure job completed and whether
+`scribeEnvironment.resource_group_name` names the deployed application group. Check publisher access if a Cosmos
+account is visible to your personal Azure login but not to the pipeline. If it reports **multiple** accounts, resolve
+the configuration/ownership ambiguity; do not delete databases or select the first account merely to pass the check.
+
+Both publication pipelines stop immediately if discovery fails. The publisher also rejects an empty `COSMOS_ENDPOINT`
+before reading or publishing the release. Older pipeline revisions may show a second `Invalid URL` error because
+an `export` command hid the failed lookup; that second error is a consequence, not a separate database problem.
+No teardown or state-backend deletion is required to resolve this publication error.
+
 ## Stop and restart through Operations
 
 To stop API processing without deleting data, run the **Operations pipeline** (`pipelines/operations.yml`) with the

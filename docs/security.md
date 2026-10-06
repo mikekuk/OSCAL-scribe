@@ -287,7 +287,9 @@ pipeline tasks and agents. Do not run untrusted PR builds on the private privile
 Branch control, independent approvals, exclusive locks, service-connection/variable-group permissions and restrictions
 on who can edit them are protected-resource setup requirements in [deployment](deployment.md). Editable YAML alone
 cannot enforce them against a privileged pipeline administrator. Content publication is manual and should have its
-own approved-connection checks and exclusive lock.
+own approved-connection checks and exclusive lock. Discovery must find exactly one Cosmos account in the selected
+application resource group and a valid HTTPS endpoint; zero or multiple matches fail closed. Both publication
+pipelines stop on discovery failure, and the publisher refuses an empty endpoint before reading or writing content.
 
 ### Dependencies and verification gates
 

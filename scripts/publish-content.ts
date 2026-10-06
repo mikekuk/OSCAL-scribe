@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { cosmos } from "../src/api/cosmos";
 import { hash } from "../src/api/service";
 import { validate } from "../src/shared/validation";
+if (!process.env.COSMOS_ENDPOINT?.trim())
+  throw Error("COSMOS_ENDPOINT is missing. Complete infrastructure deployment and successful publication-target discovery before publishing content.");
 const release = JSON.parse(
   await readFile(process.argv[2] || "work/content-release.json", "utf8"),
 );
