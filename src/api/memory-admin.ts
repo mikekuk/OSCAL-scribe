@@ -25,7 +25,7 @@ export class MemoryAdminStore implements AdminStore {
   async raw(container: "ssps" | "content", partition: string, cursor?: string, query = "") {
     const offset = Number(cursor || 0);
     if (!Number.isSafeInteger(offset) || offset < 0) throw new ApiError(400, "Invalid page");
-    const all = container === "ssps" ? [await this.repo.get(partition), ...await this.repo.records(partition, "")].filter(Boolean)
+    const all = container === "ssps" ? [await this.repo.get(partition), ...(this.repo.history.get(partition) || [])].filter(Boolean)
       : partition === "library" ? [this.state] : partition === "admin-audit" ? this.events
         : partition === this.release.id ? [this.release] : this.docs.has(partition.slice(6)) ? [this.docs.get(partition.slice(6))!] : [];
     const items = all.filter((r: any) => String(r.id || "registry").includes(query));

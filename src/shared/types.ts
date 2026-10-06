@@ -67,12 +67,14 @@ export interface ContentStore {
   active(): Promise<Release>;
   get(id: string): Promise<Release>;
 }
+export interface Page<T> { items: T[]; cursor?: string }
 export interface Repository {
-  list(user: User): Promise<Ssp[]>;
+  list(user: User, cursor?: string): Promise<Page<Json>>;
   get(id: string): Promise<Ssp | undefined>;
   create(ssp: Ssp, revision: Revision, audit: Json): Promise<void>;
   commit(previous: Ssp, next: Ssp, records: Json[]): Promise<void>;
-  records(id: string, prefix: string): Promise<Json[]>;
+  records(id: string, prefix: string, cursor?: string): Promise<Page<Json>>;
+  record(id: string, recordId: string): Promise<Json | undefined>;
   revisionActors(id: string, ids: string[]): Promise<string[]>;
   purge(ssp: Ssp): Promise<void>;
   adminPage(user: User, query: string, state: string, cursor?: string): Promise<{ items: Json[]; cursor?: string }>;

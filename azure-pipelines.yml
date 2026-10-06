@@ -1,4 +1,4 @@
-# Main merges deploy automatically. PRs verify only; infrastructure changes require review.
+# Main merges and PRs verify only. Cloud deployment requires an explicit run selection.
 trigger:
   batch: true
   branches: {include: [main]}
@@ -7,21 +7,31 @@ pr:
 parameters:
 - name: deploy
   type: boolean
-  default: true
+  default: false
 - name: serviceConnection
   type: string
-  default: oscal-scribe-azure
+  default: ''
+- name: deploymentServiceConnection
+  type: string
+  default: ''
+- name: devAgentPool
+  type: string
+  default: scribe-dev-agents
+- name: deployApplication
+  type: boolean
+  default: true
 - name: configFile
   type: string
   default: config/test.json
+  values: [config/test.json, config/dev.json]
 - name: environmentName
   type: string
-  default: scribe-test
+  default: ''
 - name: variableGroup
   type: string
-  default: oscal-scribe-test
+  default: ''
 variables:
-- group: ${{ parameters.variableGroup }}
+- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
 pool: {vmImage: ubuntu-24.04}
 stages:
 - stage: Build
@@ -36,9 +46,12 @@ stages:
         npm run demo:prepare
         OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
         npm run check
+        npm audit --audit-level=moderate
+        bash scripts/ci/security-scan.sh
         terraform -chdir=infrastructure init -backend=false -lockfile=readonly
         terraform -chdir=infrastructure validate
-        terraform -chdir=infrastructure fmt -check
+        terraform -chdir=infrastructure fmt -check -recursive
+        terraform -chdir=infrastructure test -var-file=../work/security-dev.tfvars.json
         node scripts/ci/package.mjs
       displayName: Test and package the application
     - publish: work/application
@@ -76,7 +89,7 @@ stages:
         artifact: infrastructure-plan
   - stage: Review
     dependsOn: Plan
-    condition: and(succeeded(), eq(dependencies.Plan.outputs['Plan.TerraformPlan.hasChanges'], 'true'))
+    condition: and(succeeded(), or(eq(dependencies.Plan.outputs['Plan.TerraformPlan.hasChanges'], 'true'), eq('${{ parameters.configFile }}', 'config/dev.json')))
     jobs:
     - job: Review
       pool: server
@@ -86,7 +99,7 @@ stages:
         timeoutInMinutes: 720
         inputs:
           notifyUsers: ''
-          allowApproversToApproveTheirOwnRuns: true
+          allowApproversToApproveTheirOwnRuns: ${{ eq(parameters.configFile, 'config/test.json') }}
           instructions: Review the Terraform plan in the Plan job. Approve only the intended environment and changes. This will deploy infrastructure and the tested application artifact. Demo data is separate.
           onTimeout: reject
   - stage: Deploy
@@ -95,7 +108,7 @@ stages:
     lockBehavior: sequential
     jobs:
     - deployment: Deploy
-      environment: ${{ parameters.environmentName }}
+      environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
       timeoutInMinutes: 60
       strategy:
         runOnce:
@@ -115,13 +128,51 @@ stages:
                 displayName: Apply the reviewed infrastructure plan
                 script: |
                   node scripts/ci/terraform.mjs --allow-new
+                  node scripts/ci/assert-plan.mjs "$(Pipeline.Workspace)/infrastructure-plan/deployment.tfplan"
                   terraform -chdir=infrastructure apply -input=false -lock-timeout=5m "$(Pipeline.Workspace)/infrastructure-plan/deployment.tfplan"
-            - template: pipelines/templates/azure-step.yml
-              parameters:
-                serviceConnection: ${{ parameters.serviceConnection }}
-                configFile: ${{ parameters.configFile }}
-                name: ApplicationDeploy
-                displayName: Deploy the tested application artifact
-                script: |
-                  node scripts/ci/terraform.mjs
-                  node scripts/deploy-app.mjs "$(Pipeline.Workspace)/application"
+                  terraform -chdir=infrastructure output -json > work/ci/outputs.json
+                  node scripts/ci/seal-outputs.mjs
+            - publish: work/ci/deployment.json
+              artifact: deployment-target
+    - ${{ if eq(parameters.deployApplication, true) }}:
+      - deployment: Application
+        dependsOn: Deploy
+        environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
+        pool:
+          ${{ if eq(parameters.configFile, 'config/dev.json') }}:
+            name: ${{ parameters.devAgentPool }}
+          ${{ else }}:
+            vmImage: ubuntu-24.04
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: self
+              - download: current
+                artifact: application
+              - download: current
+                artifact: deployment-target
+              - task: NodeTool@0
+                inputs: {versionSpec: '22.x'}
+              - script: npm ci --ignore-scripts
+                displayName: Restore locked deployment tooling
+              - template: pipelines/templates/azure-step.yml
+                parameters:
+                  serviceConnection: ${{ parameters.deploymentServiceConnection }}
+                  role: deployment
+                  configFile: ${{ parameters.configFile }}
+                  name: ApplicationDeploy
+                  displayName: Deploy the tested application artifact
+                  script: node scripts/deploy-app.mjs "$(Pipeline.Workspace)/application" "$(Pipeline.Workspace)/deployment-target/deployment.json"
+              - task: AzureStaticWebApp@0
+                displayName: Deploy the verified static web artifact
+                inputs:
+                  azure_static_web_apps_api_token: $(ScribeSwaDeploymentToken)
+                  app_location: work/deploy-web
+                  output_location: ''
+                  skip_app_build: true
+                  skip_api_build: true
+              - script: node scripts/smoke.mjs
+                displayName: Verify deployed authentication boundary
+                env:
+                  SCRIBE_URL: $(ScribeWebUrl)

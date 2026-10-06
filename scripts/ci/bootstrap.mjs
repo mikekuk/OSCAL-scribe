@@ -1,8 +1,8 @@
 // One-time cloud bootstrap. No Terraform and no local state are used here.
 import { createHash } from 'node:crypto';
-import { loadConfig, assertAccount, az } from './config.mjs';
+import { loadConfig, assertAccount, assertIdentity, az } from './config.mjs';
 const c = loadConfig(); assertAccount(c);
-const principal = az(['ad','sp','show','--id',process.env.ARM_CLIENT_ID]).id;
+const principal = assertIdentity(c, 'infrastructure');
 for (const group of [c.resource_group_name,c.state_resource_group]) {
   if (!az(['group','exists','--name',group])) throw Error(`Create resource group ${group} in the portal first`);
 }
@@ -18,4 +18,5 @@ const scope = `${account.id}/blobServices/default/containers/tfstate`;
 const digest = createHash('sha256').update(`${scope}/${principal}/state-contributor`).digest('hex');
 const roleId = `${digest.slice(0,8)}-${digest.slice(8,12)}-${digest.slice(12,16)}-${digest.slice(16,20)}-${digest.slice(20,32)}`;
 az(['role','assignment','create','--name',roleId,'--assignee-object-id',principal,'--assignee-principal-type','ServicePrincipal','--role','Storage Blob Data Contributor','--scope',scope]);
+az(['lock','create','--name','protect-scribe-state','--lock-type','CanNotDelete','--resource-group',c.state_resource_group,'--resource-name',c.state_storage_account,'--resource-type','Microsoft.Storage/storageAccounts']);
 console.log(`Backend ready: ${c.state_storage_account}/tfstate/${c.state_key}. No application resources deployed. Allow a few minutes for role propagation.`);

@@ -33,7 +33,7 @@ test("saved actor names stay immutable after rename; old IDs resolve without rew
   const {service,repo,path,plan,people} = await fixture();
   people.set(owner.oid,{oid:owner.oid,displayName:"Renamed person"});
   const saved = await service.request(owner,"PUT",path,{oscal:plan.oscal},String(plan.version));
-  const history = await service.request(owner,"GET",path+"/revisions");
+  const history = (await service.request(owner,"GET",path+"/revisions")).items;
   assert.equal(history[0].actorIdentity.displayName,"Original name");
   assert.equal(history[1].actorIdentity.displayName,"Renamed person");
   assert.equal(history[1].actor,owner.oid);
@@ -53,7 +53,7 @@ test("deleted people cannot receive new shares; revocation and saving survive di
   outage();
   const revoked = await service.request(owner,"POST",path+"/share",{oid:guest,permission:"remove"},String(shared.version));
   const saved = await service.request(owner,"PUT",path,{oscal:revoked.oscal},String(revoked.version));
-  const history = await service.request(owner,"GET",path+"/revisions");
+  const history = (await service.request(owner,"GET",path+"/revisions")).items;
   assert.equal(history.at(-1).actorIdentity.displayName,"Saved owner");
   assert.equal(saved.access.length,0);
   const labels = await service.request(owner,"POST",path+"/identities",{ids:[owner.oid]});

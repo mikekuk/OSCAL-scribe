@@ -42,3 +42,19 @@ test('App Admin assignments are explicit, validated and forwarded to Terraform',
   assert.deepEqual(terraformVariables(validateConfig({...config, app_admin_user_ids:[identity]}), identity).app_admin_user_ids, [identity]);
   assert.throws(() => validateConfig({...config, app_admin_user_ids:['invalid']}), /app_admin_user_ids/);
 });
+
+test('work dev config requires explicit identities and denies insecure settings', async()=>{
+ const {readFileSync}=await import('node:fs');
+ const template=JSON.parse(readFileSync('config/dev.json','utf8'));
+ const dev={...template,subscription_id:config.subscription_id,tenant_id:config.tenant_id,owner_object_ids:config.owner_object_ids,security_user_ids:config.security_user_ids,infrastructure_object_id:'44444444-4444-4444-8444-444444444444',deployment_object_id:'55555555-5555-4555-8555-555555555555',publisher_object_id:'66666666-6666-4666-8666-666666666666'};
+ assert.equal(validateConfig(dev).function_sku,'EP1');
+ for(const change of [{typo:true},{allow_demo:true},{private_data:false},{allow_localhost_redirect:true},{publisher_object_id:''},{publisher_object_id:dev.deployment_object_id},{owner_object_ids:[dev.deployment_object_id]}]) assert.throws(()=>validateConfig({...dev,...change}));
+ const vars=terraformVariables(validateConfig(dev),dev.infrastructure_object_id);
+ assert.equal(vars.deployment_object_id,dev.deployment_object_id);assert.equal(vars.publisher_object_id,dev.publisher_object_id);
+ assert.ok(vars.owner_object_ids.includes(dev.infrastructure_object_id));assert.ok(!vars.owner_object_ids.includes(dev.deployment_object_id));
+ const old=process.env.SCRIBE_ENVIRONMENT_JSON;
+ try {process.env.SCRIBE_ENVIRONMENT_JSON=JSON.stringify(config);assert.throws(()=>loadConfig('config/dev.json'),/does not match/);}
+ finally {if(old===undefined)delete process.env.SCRIBE_ENVIRONMENT_JSON;else process.env.SCRIBE_ENVIRONMENT_JSON=old;}
+ assert.throws(()=>validateConfig({...dev,environment:'prod',allow_destroy:true,protect_data:false}));
+ assert.doesNotThrow(()=>validateConfig({...dev,allow_destroy:true,protect_data:false}));
+});

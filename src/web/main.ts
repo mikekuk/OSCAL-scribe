@@ -3,7 +3,7 @@ import { mountPeoplePicker, personLabel } from "./people-picker";
 import type { Person } from "../shared/types";
 import { componentTypes, localComponentType } from "../shared/component-types";
 import { showAdmin } from "./admin-view";
-import { PublicClientApplication } from "@azure/msal-browser";
+import { PublicClientApplication, InteractionRequiredAuthError } from "@azure/msal-browser";
 import { escapeHtml as h } from "../shared/lens/views.mjs";
 import { flatten, preview } from "../shared/lens/engine.mjs";
 import { uuid, reviewStatus } from "../shared/oscal";
@@ -26,7 +26,15 @@ async function loadIdentities() {
       for (const person of result.people) identities.set(person.oid, person);
       // Update labels only: an arriving lookup must not reset a user's search or edits.
       document.querySelectorAll<HTMLElement>("[data-live-person]").forEach(node => {
-        const oid = node.dataset.livePerson!; node.innerHTML = personLabel(oid, identities.get(oid));
+        const oid = node.dataset.livePerson!, person = identities.get(oid);
+        const name = document.createElement("span"), contact = document.createElement("small");
+        name.textContent = person?.displayName || "User unavailable";
+        const address = person?.email || person?.userPrincipalName;
+        if (address) { contact.textContent = ` (${address})`; name.append(contact); }
+        if (person?.guest) name.append(" · Guest");
+        const details = document.createElement("details"), summary = document.createElement("summary"), identity = document.createElement("code");
+        summary.textContent = "Identity details"; identity.textContent = oid; details.append(summary, identity);
+        node.replaceChildren(name, details);
       });
       if (result.unavailable) return;
     } catch { /* Names are optional display data: opening an SSP must still work. */ }
@@ -61,19 +69,52 @@ const tabs = [
 ];
 const openCards = new Set<string>();
 const selectedControls = new Set<string>();
+let planPages: (string | undefined)[] = [undefined], planNext: string | undefined;
+let revisionPages: (string | undefined)[] = [undefined], revisionNext: string | undefined;
+let sessionGeneration = 0;
+function clearSession() {
+  sessionGeneration++;
+  current = undefined; list = []; history = []; baseline = undefined; approved = undefined;
+  identities.clear(); rowCache = undefined; selectedControls.clear(); openCards.clear(); dirty = false;
+  planPages = [undefined]; revisionPages = [undefined]; planNext = undefined; revisionNext = undefined;
+  errors = []; selectedSharePerson = () => undefined;
+  controlQuery = controlGroup = controlComponent = transferSource = transferTarget = "";
+  app.replaceChildren();
+}
+function sessionExpired() {
+  clearSession();
+  const section = document.createElement('section'), title = document.createElement('h1'), button = document.createElement('button');
+  title.textContent = 'Your session has ended'; button.textContent = 'Sign in again';
+  button.onclick = () => void msal?.loginRedirect({scopes, prompt:'select_account'});
+  section.append(title,button); app.append(section);
+}
+async function loadPlanPage() {
+  const cursor = planPages.at(-1);
+  const page = await api('ssps' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
+  list = page.items; planNext = page.cursor;
+}
+async function loadRevisionPage() {
+  const cursor = revisionPages.at(-1);
+  const page = await api(`ssps/${current!.sspId}/revisions` + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''));
+  history = page.items; revisionNext = page.cursor;
+}
 const body = () => current!.oscal["system-security-plan"];
 async function api(path: string, method = "GET", data?: any) {
+  const generation = sessionGeneration;
   let token = "";
   if (msal) {
-    const account = msal.getAllAccounts()[0];
+    const account = msal.getActiveAccount();
     if (!account) throw Error("Please sign in");
     try {
       token = (await msal.acquireTokenSilent({ account, scopes })).accessToken;
-    } catch {
+    } catch (error) {
+      if (!(error instanceof InteractionRequiredAuthError)) throw error;
+      clearSession();
       await msal.acquireTokenRedirect({ account, scopes });
       throw Error("Sign-in required");
     }
   }
+  if (generation !== sessionGeneration) throw Error("Session changed");
   const r = await fetch("/api/" + path, {
     method,
     headers: {
@@ -83,7 +124,10 @@ async function api(path: string, method = "GET", data?: any) {
     },
     body: data === undefined ? undefined : JSON.stringify(data),
   });
+  if (generation !== sessionGeneration) throw Error("Session changed");
+  if (r.status === 401) { sessionExpired(); throw Error("Please sign in again"); }
   const result = await r.json();
+  if (generation !== sessionGeneration) throw Error("Session changed");
   if (!r.ok) throw Error([result.error, ...(result.details || [])].join("\n"));
   return result;
 }
@@ -124,7 +168,7 @@ function layout(content: string) {
   });
   document
     .querySelector("#logout")
-    ?.addEventListener("click", () => msal?.logoutRedirect());
+    ?.addEventListener("click", () => { clearSession(); void msal?.logoutRedirect(); });
 }
 function message(text: string, error = false) {
   const m = document.querySelector("#message")!;
@@ -135,7 +179,7 @@ async function run(fn: () => Promise<any> | void) {
   try {
     await fn();
   } catch (e) {
-    message((e as Error).message, true);
+    if (document.querySelector("#message")) message((e as Error).message, true);
   }
 }
 async function uploadSsp() {
@@ -155,14 +199,16 @@ async function home() {
   current = undefined;
   dirty = false;
   if (user.roles.includes("AppAdmin")) { await showAdmin(api, layout, run, download, { open, create: newAdminPlan, upload: uploadSsp }); return; }
-  list = await api("ssps");
+  planPages = [undefined]; await loadPlanPage();
   approved = await api("content");
   renderHome();
 }
 function renderHome() {
   layout(
-    `<div class="eyebrow">YOUR ASSURANCE LIBRARY</div><div class="page-title"><div><h1>System security plans</h1><p>Describe your systems. Connect controls to implementation. Keep a clear record.</p></div><div class="inline"><button id="upload-ssp" class="quiet">Upload SSP</button><button id="new">＋ Create a plan</button></div></div><div class="stats">${info("PLANS", list.length)}${info("REVIEW NEEDED", list.filter((x) => reviewStatus(x) !== "Attested").length)}${info("APPROVED BASELINES", approved.profiles.length)}</div><section id="new-form" hidden><h2>Create a system security plan</h2><label class="field">System name<input id="system-name" maxlength="200"></label><label class="field">Approved baseline<select id="profile">${approved.profiles.map((p: any) => `<option value="${h(p.id)}">${h(p.title)}</option>`).join("")}</select></label><button id="create">Create plan</button></section><div class="plans">${list.length ? list.map((s) => `<button class="plan-card" data-open="${h(s.sspId)}"><span class="pill">${h(s.archived ? "Archived" : reviewStatus(s))}</span><h2>${h(s.systemName)}</h2><p>${h(s.profileId)} · Revision ${s.currentRevision}</p><small>Updated ${h(new Date(s.modifiedAt).toLocaleDateString())}</small><span class="arrow">↗</span></button>`).join("") : '<section class="empty"><h2>Your first plan starts with a baseline.</h2><p>Choose an approved profile and Scribe creates a workspace for every applicable control.</p></section>'}</div>`,
+    `<div class="eyebrow">YOUR ASSURANCE LIBRARY</div><div class="page-title"><div><h1>System security plans</h1><p>Describe your systems. Connect controls to implementation. Keep a clear record.</p></div><div class="inline"><button id="upload-ssp" class="quiet">Upload SSP</button><button id="new">＋ Create a plan</button></div></div><div class="stats">${info("PLANS ON THIS PAGE", list.length)}${info("REVIEW NEEDED", list.filter((x) => reviewStatus(x) !== "Attested").length)}${info("APPROVED BASELINES", approved.profiles.length)}</div><section id="new-form" hidden><h2>Create a system security plan</h2><label class="field">System name<input id="system-name" maxlength="200"></label><label class="field">Approved baseline<select id="profile">${approved.profiles.map((p: any) => `<option value="${h(p.id)}">${h(p.title)}</option>`).join("")}</select></label><button id="create">Create plan</button></section><div class="plans">${list.length ? list.map((s) => `<button class="plan-card" data-open="${h(s.sspId)}"><span class="pill">${h(s.archived ? "Archived" : reviewStatus(s))}</span><h2>${h(s.systemName)}</h2><p>${h(s.profileId)} · Revision ${s.currentRevision}</p><small>Updated ${h(new Date(s.modifiedAt).toLocaleDateString())}</small><span class="arrow">↗</span></button>`).join("") : '<section class="empty"><h2>Your first plan starts with a baseline.</h2><p>Choose an approved profile and Scribe creates a workspace for every applicable control.</p></section>'}</div><nav aria-label="Plan pages"><button id="plans-prev" ${planPages.length === 1 ? 'disabled' : ''}>Previous</button><span>Page ${planPages.length}</span><button id="plans-next" ${planNext ? '' : 'disabled'}>Next</button></nav>`,
   );
+  document.querySelector<HTMLButtonElement>('#plans-prev')!.onclick = () => void run(async () => { planPages.pop(); await loadPlanPage(); renderHome(); });
+  document.querySelector<HTMLButtonElement>('#plans-next')!.onclick = () => void run(async () => { planPages.push(planNext); await loadPlanPage(); renderHome(); });
   document.querySelector("#upload-ssp")!.addEventListener("click", () => void run(uploadSsp));
   document.querySelector("#new")!.addEventListener("click", () => {
     document.querySelector<HTMLElement>("#new-form")!.hidden = false;
@@ -196,7 +242,7 @@ async function open(id: string) {
   selectedControls.clear();
   addComponentOpen = false;
   openCards.clear();
-  history = await api(`ssps/${id}/revisions`);
+  revisionPages = [undefined]; await loadRevisionPage();
   tab = "Overview";
   dirty = false;
   errors = [];
@@ -294,7 +340,7 @@ function section(): string {
         (r) =>
           `<section class="revision"><b>Revision ${r.revision}</b><span>${h(new Date(r.at).toLocaleString())}</span><div><small>Saved by</small>${r.actorIdentity ? personLabel(r.actor, r.actorIdentity) : livePerson(r.actor)}${r.actorIdentity ? "<small>Name recorded at save time</small>" : ""}</div><button data-revision="${r.revision}" class="quiet">Download revision</button></section>`,
       )
-      .join("")}`;
+      .join("")}<nav aria-label="Revision pages"><button id="history-prev" ${revisionPages.length === 1 ? "disabled" : ""}>Previous</button><span>Page ${revisionPages.length}</span><button id="history-next" ${revisionNext ? "" : "disabled"}>Next</button></nav>`;
   return `<p>Schema validation checks structure and references. It does not certify that controls are effective.</p><button id="validate">Validate plan</button> <button id="export">Download OSCAL SSP</button> <button id="export-baseline" class="quiet">Download pinned baseline</button><div class="validation" role="status">${errors.length ? errors.map((e) => `<p>${h(e)}</p>`).join("") : "Run validation to check the current document."}</div><details><summary>Inspect OSCAL JSON</summary><pre>${h(JSON.stringify(current!.oscal, null, 2))}</pre></details>`;
 }
 /** Local component records live only in the SSP. Imported records retain their
@@ -592,6 +638,8 @@ function bind() {
     }
     download("ssp.json", current!.oscal);
   });
+  on("history-prev", async () => { revisionPages.pop(); await loadRevisionPage(); render(); });
+  on("history-next", async () => { revisionPages.push(revisionNext); await loadRevisionPage(); render(); });
   on("export-baseline", () => download("pinned-content.json", baseline));
   document.querySelectorAll<HTMLElement>("[data-revision]").forEach(
     (e) =>
@@ -622,7 +670,7 @@ async function save() {
     oscal: current!.oscal,
   });
   dirty = false;
-  history = await api(`ssps/${current!.sspId}/revisions`);
+  revisionPages = [undefined]; await loadRevisionPage();
   render();
   message("Saved as immutable revision " + current!.currentRevision);
 }
@@ -645,7 +693,9 @@ window.addEventListener("beforeunload", (e) => {
 async function start() {
   let config: any;
   try {
-    config = await (await fetch("/config.json")).json();
+    const response = await fetch("/config.json", {cache:"no-store"});
+    if (!response.ok) throw Error("Missing deployment configuration");
+    config = await response.json();
   } catch {
     if (["localhost", "127.0.0.1"].includes(location.hostname))
       config = await (await fetch("/api/config")).json();
@@ -655,6 +705,7 @@ async function start() {
     config.localDemo === true &&
     ["localhost", "127.0.0.1"].includes(location.hostname);
   if (!demo) {
+    if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(config.tenantId) || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(config.clientId)) throw Error('Invalid deployment sign-in configuration');
     scopes = [`api://${config.clientId}/access_as_user`];
     msal = new PublicClientApplication({
       auth: {
@@ -665,14 +716,16 @@ async function start() {
       cache: { cacheLocation: "sessionStorage" },
     });
     await msal.initialize();
-    await msal.handleRedirectPromise();
-    if (!msal.getAllAccounts().length) {
+    const redirect = await msal.handleRedirectPromise();
+    const accounts = msal.getAllAccounts();
+    msal.setActiveAccount(redirect?.account || (accounts.length === 1 ? accounts[0] : null));
+    if (!msal.getActiveAccount()) {
       layout(
         '<section class="login"><div class="eyebrow">SECURITY PLANNING, CONNECTED</div><h1>A clear record of your<br>system security.</h1><p>Sign in with your company account to create and maintain security plans.</p><button id="signin">Sign in with Microsoft</button></section>',
       );
       document
         .querySelector("#signin")!
-        .addEventListener("click", () => msal!.loginRedirect({ scopes }));
+        .addEventListener("click", () => msal!.loginRedirect({ scopes, prompt: "select_account" }));
       return;
     }
   }
@@ -681,3 +734,6 @@ async function start() {
 }
 layout("<section><h1>Opening your workspace…</h1></section>");
 void run(start);
+
+// A restored browser history page must recheck authorization before displaying SSPs.
+window.addEventListener("pageshow", event => { if (event.persisted) { clearSession(); location.reload(); } });

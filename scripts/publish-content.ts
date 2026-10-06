@@ -1,3 +1,4 @@
+import { AzureCliCredential } from "@azure/identity";
 import { readFile } from "node:fs/promises";
 import { cosmos } from "../src/api/cosmos";
 import { hash } from "../src/api/service";
@@ -16,7 +17,7 @@ for (const d of [
 }
 if (hash({ ...release, id: "" }).slice(0, 32) !== release.id)
   throw Error("Release digest mismatch");
-const container = cosmos()
+const container = cosmos(new AzureCliCredential())
     .database(process.env.COSMOS_DATABASE || "scribe")
     .container("content"),
   data = Buffer.from(JSON.stringify(release));

@@ -33,4 +33,4 @@ OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
 
 Publish a real approved release through **Scribe – Controlled content**. New plans then use the active approved release. Keep historical demo releases while retained test SSPs reference them. For clean production, use a separate environment with `allow_demo: false` and publish only approved content. The demo importer and this directory can be removed without changing the production API or editor; also remove demo preparation and fixture-dependent tests from verification pipelines if retiring demo tooling entirely.
 
-See the [cloud setup guide](../docs/deployment.md#6-add-demo-data-separately).
+See the [cloud setup guide](../docs/deployment.md#content-publication-and-empty-installations).

@@ -11,7 +11,7 @@ The pipeline publishes the deployment's public client ID in the site's `config.j
 1. Open [Microsoft Entra admin center](https://entra.microsoft.com/) in the target tenant from the protected Azure DevOps configuration.
 2. In **Enterprise applications → All applications**, search for the generated Scribe name; open **Users and groups** to inspect assignments.
 3. In **App registrations → All applications**, find the same name/client ID; inspect Authentication, Expose an API and App roles.
-4. The **deployment service connection** has a separate application/service principal with federated credentials. Its Azure/Graph permissions are described in the [cloud setup guide](deployment.md#3-create-the-federated-azure-service-connection). It is not the Scribe end-user application.
+4. The **infrastructure service connection** has a separate application/service principal with federated credentials. Its Azure/Graph permissions are described in the [cloud setup guide](deployment.md). It is not the Scribe end-user application.
 
 Application/client IDs and tenant/user object IDs are configuration, not passwords. Microsoft explains the object distinction in [application objects and service principals](https://learn.microsoft.com/en-us/entra/identity-platform/app-objects-and-service-principals).
 
@@ -30,7 +30,7 @@ Application/client IDs and tenant/user object IDs are configuration, not passwor
 | --- | --- | --- |
 | Scribe User | `User` | Can create plans. Can access owned plans and plans explicitly shared with their object ID. |
 | Security | `Security` | Can access and administer all plans in this deployment's tenant. This is an application role, not Microsoft Entra's built-in Security Administrator role. |
-| App Admin | `AppAdmin` | Tenant-wide SSP access, raw storage exploration, permanent SSP deletion and staged content administration. Assigned only through the pipeline-managed `app_admin_user_ids` list. |
+| App Admin | `AppAdmin` | Tenant-wide SSP access and staged content administration; raw exploration and permanent deletion also require explicit configuration. Assigned only through the pipeline-managed `app_admin_user_ids` list. |
 | No role | None | Cannot use the Scribe API, even if the public homepage is visible or Microsoft sign-in succeeds elsewhere. |
 
 The API checks the token signature, issuer, audience, tenant, required claims, delegated `access_as_user` scope and one of the expected roles. It does not trust browser-supplied identity headers. The frontend is a public SPA using authorization code + PKCE; it has **no client secret**. A single app registration defines both the SPA and its API scope. Terraform preauthorizes the SPA for that scope; tenant consent policy can still require an administrator's action.
@@ -67,7 +67,7 @@ Open **Azure DevOps → Pipelines → Library → your environment's variable gr
 
 This shows only the access fields; preserve the other fields in the complete configuration.
 
-Edit `security_user_ids` or `user_ids` in the protected `scribeEnvironment` JSON and manually run Build and deploy. The main Azure DevOps pipeline plans the access changes and pauses for review before applying them. To revoke a Terraform-managed assignment, remove the object ID from the relevant list. Prefer one intended role; permissions are additive, and AppAdmin grants the additional destructive administration rights.
+Edit `security_user_ids` or `user_ids` in the protected `scribeEnvironment` JSON and manually run Build and deploy with `deploy: true` and the intended `configFile`. The main Azure DevOps pipeline plans the access changes and pauses for review before applying them. To revoke a Terraform-managed assignment, remove the object ID from the relevant list. Prefer one intended role; permissions are additive, and AppAdmin grants the additional destructive administration rights.
 
 This template assigns individual users. Group-based Enterprise app assignment is an optional company extension, subject to Entra licensing and group membership rules; there is currently no dedicated group-assignment variable or group-based SSP sharing mechanism in Scribe.
 
@@ -83,21 +83,21 @@ Once assigned, have the user sign out/in to obtain fresh role claims. For a Scri
 
 - **One plan:** remove its sharing entry. Later API requests check the current stored ACL, including historical revisions. This does not remove owner or Security access.
 - **All Scribe access:** remove every Enterprise app role assignment granting that user access, including group-based grants if introduced. Update Terraform too. Existing tokens carry role claims until they expire; the API does not query Graph on every request. Do not describe Entra role removal as instant revocation of already-issued tokens.
-- **Immediate whole-service outage:** stop the Function App using the [shutdown runbook](deployment.md#stop-restart-delete-and-rebuild-from-the-browser). Disabling Enterprise app sign-in prevents new sign-ins/token acquisition but does not itself stop costs or guarantee immediate rejection of all existing tokens.
+- **Immediate whole-service outage:** stop the Function App using the [shutdown runbook](deployment.md#stop-and-restart-through-operations). Disabling Enterprise app sign-in prevents new sign-ins/token acquisition but does not itself stop costs or guarantee immediate rejection of all existing tokens.
 
 ## Azure resource permissions are separate
 
 | Identity | Current template grants / required capability | Not granted automatically |
 | --- | --- | --- |
 | Bootstrap/infrastructure operator | Must already be able to create resources and role assignments in the target Azure scope, and manage the target Entra app/service principal/user assignments. | Azure Owner does not confer Entra directory administration; Entra admin does not confer subscription permissions. |
-| Function App system-assigned managed identity | Cosmos Data Contributor scoped to `scribe/ssps`; Cosmos Data Contributor scoped to `scribe/content`; runtime storage roles on this deployment's storage account. | The API exposes staged library management, not release publication. Browser users never receive its credentials or Cosmos keys. |
+| Function App system-assigned managed identity | Cosmos Contributor on `ssps` and `staging`, Reader on published `content`, and create-only on `audit`; host storage roles plus package-container Reader. | The API exposes staged library management, not release publication. Browser users never receive its credentials or Cosmos keys. |
 | `publisher_object_id` | Cosmos Data Contributor scoped to `scribe/content`; No package-upload role; content publication is separate. | No SSP-container data grant and no permission to change Function/SWA settings from this grant. |
-| Application deployment operator/job | Needs package blob upload, Function configuration/restart, SWA deployment-token retrieval and access to Terraform outputs/state. Azure Contributor at the app resource-group scope covers management operations; blob **data** access must also be assigned. | The deployment script does not grant these permissions to itself. |
+| Application deployment operator/job | Terraform grants package-container Blob Contributor and a custom Function configuration/restart and SWA token-retrieval role. Receives a public outputs artifact; needs no state or Graph access. | The deployment script does not grant these permissions to itself. |
 | Scribe end user | Enterprise app role plus plan permissions. | Does not need Azure portal, subscription IAM or direct Cosmos access. |
 
-Runtime storage roles currently include Storage Blob Data Owner, Storage Queue Data Contributor and Storage Account Contributor, scoped to the Function storage account. They support the Functions host and private package access. Cosmos local/key authentication is disabled; data access uses Entra identities and container-scoped Cosmos data roles.
+Runtime storage roles currently include Storage Blob Data Owner, Storage Queue Data Contributor and Storage Account Contributor, scoped to the Function storage account. They support the Functions host. Executable packages use a separate storage account with runtime read-only access. Cosmos local/key authentication is disabled; data access uses Entra identities and container-scoped Cosmos data roles.
 
-The supplied personal configuration uses the pipeline service principal as content publisher when `publisher_object_id` is empty. `deployment_object_id` independently controls package uploads. For company separation of duties, set an explicit publisher identity and use a separate publication service connection. Human application access comes from `security_user_ids` and `user_ids`; neither pipeline identity receives a Scribe user role automatically.
+The supplied personal configuration uses the pipeline service principal as content publisher when `publisher_object_id` is empty. `deployment_object_id` independently controls package uploads. Work dev requires three distinct explicit infrastructure, deployment and publisher identities and separate federated service connections. Only infrastructure owns/manages the application and has state access. Human application access comes from `security_user_ids` and `user_ids`; neither pipeline identity receives a Scribe user role automatically.
 
 ## Troubleshooting access
 

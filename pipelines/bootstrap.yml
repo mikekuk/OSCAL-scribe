@@ -4,15 +4,16 @@ pr: none
 parameters:
 - name: serviceConnection
   type: string
-  default: oscal-scribe-azure
+  default: ''
 - name: configFile
   type: string
   default: config/test.json
+  values: [config/test.json, config/dev.json]
 - name: variableGroup
   type: string
-  default: oscal-scribe-test
+  default: ''
 variables:
-- group: ${{ parameters.variableGroup }}
+- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
 pool: {vmImage: ubuntu-24.04}
 steps:
 - checkout: self

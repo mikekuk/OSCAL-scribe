@@ -1,0 +1,8 @@
+misconfigurations:
+  - id: AVD-AZU-0010
+    paths:
+      - functions.tf
+    statement: >-
+      Intentional stricter control: neither host nor package storage needs trusted
+      Azure service firewall bypass. The dev profile uses private endpoints and
+      managed identities. Keep bypass=None; re-review if new integrations need it.

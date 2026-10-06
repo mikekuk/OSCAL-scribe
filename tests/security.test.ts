@@ -72,7 +72,7 @@ test("BOLA: guessing UUID grants no current, historical, validation, edit, share
     ["POST", "/attest", { revision: 1, systemRole: "ssp-preparer" }],
   ] as const)
     await denied(s.request(A, method, path + suffix, body, "1"), 404);
-  assert.deepEqual(await s.request(A, "GET", "/api/ssps"), []);
+  assert.deepEqual((await s.request(A, "GET", "/api/ssps")).items, []);
 });
 test("read share cannot edit/manage; edit share can save only OSCAL", async () => {
   const { s, doc, path } = await fixture();
@@ -104,7 +104,7 @@ test("read share cannot edit/manage; edit share can save only OSCAL", async () =
 test("Security has global access only in its tenant; ordinary clients cannot manufacture privilege", async () => {
   const { s, doc, path } = await fixture();
   assert.equal((await s.request(security, "GET", path)).sspId, doc.sspId);
-  assert.equal((await s.request(security, "GET", "/api/ssps")).length, 1);
+  assert.equal((await s.request(security, "GET", "/api/ssps")).items.length, 1);
   await denied(s.request({ ...security, tid: "other" }, "GET", path), 404);
   await denied(s.request(A, "PUT", path, { roles: ["Security"] }, "1"), 404);
   await denied(s.request(undefined, "GET", path), 401);
@@ -148,7 +148,7 @@ test("revoked sharing blocks historical access immediately", async () => {
     { oid: A.oid, permission: "read" },
     "1",
   );
-  assert.equal((await s.request(A, "GET", path + "/revisions")).length, 1);
+  assert.equal((await s.request(A, "GET", path + "/revisions")).items.length, 1);
   await s.request(
     B,
     "POST",

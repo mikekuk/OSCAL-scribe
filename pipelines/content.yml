@@ -3,10 +3,18 @@ pr: none
 parameters:
 - name: serviceConnection
   type: string
-  default: oscal-scribe-azure
+  default: ''
+- name: devAgentPool
+  type: string
+  default: scribe-dev-agents
 - name: configFile
   type: string
   default: config/test.json
+  values: [config/test.json, config/dev.json]
+- name: contentSource
+  type: string
+  default: nist-reference
+  values: [nist-reference, controlled-repository]
 - name: contentRepository
   type: string
   default: ControlledOSCAL
@@ -15,21 +23,27 @@ parameters:
   default: refs/heads/main
 - name: variableGroup
   type: string
-  default: oscal-scribe-test
+  default: ''
 resources:
   repositories:
-  - repository: controlled
-    type: git
-    name: ${{ parameters.contentRepository }}
-    ref: ${{ parameters.contentRef }}
+  - ${{ if eq(parameters.contentSource, 'controlled-repository') }}:
+    - repository: controlled
+      type: git
+      name: ${{ parameters.contentRepository }}
+      ref: ${{ parameters.contentRef }}
 variables:
-- group: ${{ parameters.variableGroup }}
-pool: {vmImage: ubuntu-24.04}
+- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+pool:
+  ${{ if eq(parameters.configFile, 'config/dev.json') }}:
+    name: ${{ parameters.devAgentPool }}
+  ${{ else }}:
+    vmImage: ubuntu-24.04
 steps:
 - checkout: self
   path: s/scribe
-- checkout: controlled
-  path: s/controlled
+- ${{ if eq(parameters.contentSource, 'controlled-repository') }}:
+  - checkout: controlled
+    path: s/controlled
 - task: NodeTool@0
   inputs: {versionSpec: '22.x'}
 - task: JavaToolInstaller@0
@@ -39,13 +53,20 @@ steps:
     jdkSourceOption: PreInstalled
 - bash: |
     set -euo pipefail
-    bash scripts/ci/install-terraform.sh
     npm ci
     bash scripts/install-oscal-cli.sh
-    OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- ../controlled
-    git -C ../controlled rev-parse HEAD > work/content-source-commit.txt
+    if [ "$CONTENT_SOURCE" = nist-reference ]; then
+      node --import tsx scripts/prepare-reference.ts
+      OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- work/reference-source
+      git rev-parse HEAD > work/content-source-commit.txt
+    else
+      OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- ../controlled
+      git -C ../controlled rev-parse HEAD > work/content-source-commit.txt
+    fi
   workingDirectory: $(Pipeline.Workspace)/s/scribe
   displayName: Validate and resolve controlled content
+  env:
+    CONTENT_SOURCE: ${{ parameters.contentSource }}
 - publish: $(Pipeline.Workspace)/s/scribe/work/content-release.json
   artifact: approved-content-release
 - publish: $(Pipeline.Workspace)/s/scribe/work/content-source-commit.txt
@@ -53,10 +74,10 @@ steps:
 - template: templates/azure-step.yml
   parameters:
     serviceConnection: ${{ parameters.serviceConnection }}
+    role: publisher
     configFile: ${{ parameters.configFile }}
     workingDirectory: $(Pipeline.Workspace)/s/scribe
     displayName: Publish approved controlled content
     script: |
-      node scripts/ci/terraform.mjs
-      export COSMOS_ENDPOINT=$(terraform -chdir=infrastructure output -raw cosmos_endpoint)
+      export COSMOS_ENDPOINT=$(node scripts/ci/publisher-target.mjs)
       npm run content:publish
