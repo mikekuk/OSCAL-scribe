@@ -9,6 +9,9 @@ The security work references baseline commit
 Azure Pipelines and **repeat the security review after development in work dev is complete**.
 See [work-dev.md](work-dev.md) and the evolving [before-production.md](before-production.md) guide.
 
+**Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
+This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+
 ## Choose a profile
 
 Every supplied pipeline accepts `configFile: config/test.json` or `config/dev.json`.

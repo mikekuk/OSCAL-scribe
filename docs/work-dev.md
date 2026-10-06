@@ -13,6 +13,9 @@ Use [deployment.md](deployment.md) for the executable deployment/rebuild sequenc
 [before-production.md](before-production.md) for the subsequent release guide.
 No Azure deployment is performed by adding `config/dev.json` to Git.
 
+**Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
+This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+
 ## What dev.json deploys
 
 Select `configFile: config/dev.json` in the supplied pipelines. It selects work defaults:

@@ -14,6 +14,9 @@ There is deliberately no enabled production pipeline/profile in this change. The
 minimum production-policy checks, but these are not the entire production security policy. Do not obtain production
 approval merely by renaming `dev.json` or changing its environment label.
 
+**Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
+This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+
 ## Review the final system
 
 - Inventory actual browser, API, identity, data, admin, publisher, deployment and network trust boundaries.

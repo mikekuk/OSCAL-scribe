@@ -1,5 +1,8 @@
 # Security architecture, controls and operating requirements
 
+**Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
+This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+
 ## Status, scope and review baseline
 
 This is the central security reference for OSCAL Scribe's browser application, Function API, Azure resources,
