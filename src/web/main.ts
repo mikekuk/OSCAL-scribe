@@ -1,3 +1,4 @@
+import { showSspUpload } from "./ssp-upload";
 import { mountPeoplePicker, personLabel } from "./people-picker";
 import type { Person } from "../shared/types";
 import { componentTypes, localComponentType } from "../shared/component-types";
@@ -115,7 +116,7 @@ function layout(content: string) {
   document.querySelector("#admin")?.addEventListener("click", () => void run(async () => {
     if (dirty && !confirm("Discard unsaved changes?")) return;
     current = undefined; dirty = false;
-    await showAdmin(api, layout, run, download, { open, create: newAdminPlan });
+    await showAdmin(api, layout, run, download, { open, create: newAdminPlan, upload: uploadSsp });
   }));
   document.querySelector("#home")?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -137,6 +138,11 @@ async function run(fn: () => Promise<any> | void) {
     message((e as Error).message, true);
   }
 }
+async function uploadSsp() {
+  if (dirty && !confirm("Discard unsaved changes?")) return;
+  current = undefined; dirty = false;
+  showSspUpload(layout, api, open, () => run(home));
+}
 async function newAdminPlan() {
   approved = await api("content");
   list = []; current = undefined; dirty = false;
@@ -148,15 +154,16 @@ async function home() {
   if (dirty && !confirm("Discard unsaved changes?")) return;
   current = undefined;
   dirty = false;
-  if (user.roles.includes("AppAdmin")) { await showAdmin(api, layout, run, download, { open, create: newAdminPlan }); return; }
+  if (user.roles.includes("AppAdmin")) { await showAdmin(api, layout, run, download, { open, create: newAdminPlan, upload: uploadSsp }); return; }
   list = await api("ssps");
   approved = await api("content");
   renderHome();
 }
 function renderHome() {
   layout(
-    `<div class="eyebrow">YOUR ASSURANCE LIBRARY</div><div class="page-title"><div><h1>System security plans</h1><p>Describe your systems. Connect controls to implementation. Keep a clear record.</p></div><button id="new">＋ Create a plan</button></div><div class="stats">${info("PLANS", list.length)}${info("REVIEW NEEDED", list.filter((x) => reviewStatus(x) !== "Attested").length)}${info("APPROVED BASELINES", approved.profiles.length)}</div><section id="new-form" hidden><h2>Create a system security plan</h2><label class="field">System name<input id="system-name" maxlength="200"></label><label class="field">Approved baseline<select id="profile">${approved.profiles.map((p: any) => `<option value="${h(p.id)}">${h(p.title)}</option>`).join("")}</select></label><button id="create">Create plan</button></section><div class="plans">${list.length ? list.map((s) => `<button class="plan-card" data-open="${h(s.sspId)}"><span class="pill">${h(s.archived ? "Archived" : reviewStatus(s))}</span><h2>${h(s.systemName)}</h2><p>${h(s.profileId)} · Revision ${s.currentRevision}</p><small>Updated ${h(new Date(s.modifiedAt).toLocaleDateString())}</small><span class="arrow">↗</span></button>`).join("") : '<section class="empty"><h2>Your first plan starts with a baseline.</h2><p>Choose an approved profile and Scribe creates a workspace for every applicable control.</p></section>'}</div>`,
+    `<div class="eyebrow">YOUR ASSURANCE LIBRARY</div><div class="page-title"><div><h1>System security plans</h1><p>Describe your systems. Connect controls to implementation. Keep a clear record.</p></div><div class="inline"><button id="upload-ssp" class="quiet">Upload SSP</button><button id="new">＋ Create a plan</button></div></div><div class="stats">${info("PLANS", list.length)}${info("REVIEW NEEDED", list.filter((x) => reviewStatus(x) !== "Attested").length)}${info("APPROVED BASELINES", approved.profiles.length)}</div><section id="new-form" hidden><h2>Create a system security plan</h2><label class="field">System name<input id="system-name" maxlength="200"></label><label class="field">Approved baseline<select id="profile">${approved.profiles.map((p: any) => `<option value="${h(p.id)}">${h(p.title)}</option>`).join("")}</select></label><button id="create">Create plan</button></section><div class="plans">${list.length ? list.map((s) => `<button class="plan-card" data-open="${h(s.sspId)}"><span class="pill">${h(s.archived ? "Archived" : reviewStatus(s))}</span><h2>${h(s.systemName)}</h2><p>${h(s.profileId)} · Revision ${s.currentRevision}</p><small>Updated ${h(new Date(s.modifiedAt).toLocaleDateString())}</small><span class="arrow">↗</span></button>`).join("") : '<section class="empty"><h2>Your first plan starts with a baseline.</h2><p>Choose an approved profile and Scribe creates a workspace for every applicable control.</p></section>'}</div>`,
   );
+  document.querySelector("#upload-ssp")!.addEventListener("click", () => void run(uploadSsp));
   document.querySelector("#new")!.addEventListener("click", () => {
     document.querySelector<HTMLElement>("#new-form")!.hidden = false;
   });

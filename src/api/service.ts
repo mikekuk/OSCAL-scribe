@@ -1,3 +1,4 @@
+import { copyUploadedSsp } from "../shared/ssp-import";
 import type { Directory } from "./directory";
 import type { Person } from "../shared/types";
 import { AdminService, MAX_UPLOAD, type AdminStore } from "./admin";
@@ -7,6 +8,7 @@ import { createSsp, integrity } from "../shared/oscal";
 import { validate, bounded } from "../shared/validation";
 import type {
   User,
+  Release,
   Ssp,
   Repository,
   ContentStore,
@@ -99,6 +101,33 @@ export class Service {
       };
     }
     if (p[0] !== "ssps") throw new ApiError(404, "Not found");
+    if (p[1] === "import" && method === "POST" && (!p[2] || (p[2] === "preview" && !p[3]))) {
+      requireKeys(body, ["oscal"]);
+      const errors = validate(body.oscal || {});
+      if (errors.length || !body.oscal?.["system-security-plan"]) throw new ApiError(422, "Upload a valid OSCAL SSP JSON file", errors);
+      const source = body.oscal["system-security-plan"];
+      const reference = /^urn:oscal-scribe:([a-zA-Z0-9_-]{1,100}):([a-zA-Z0-9_.-]{1,200})$/.exec(source["import-profile"].href);
+      if (!reference) throw new ApiError(422, "This upload needs the original Scribe baseline reference. Use an SSP downloaded from Scribe; external profiles are not fetched.");
+      let release: Release;
+      try { release = await this.content.get(reference[1]); }
+      catch (error) {
+        if (error instanceof ApiError && error.status === 404) throw new ApiError(422, "The original content release is unavailable. An administrator must restore or publish that exact release before you can upload this SSP.");
+        throw error;
+      }
+      const profile = release.profiles.find(p => p.id === reference[2]);
+      if (!profile) throw new ApiError(422, "The original profile is not present in this content release");
+      this.valid(body.oscal, profile, release.id);
+      if (source["system-implementation"].components.filter((c: Json) => c.type === "this-system").length !== 1)
+        throw new ApiError(422, "The SSP must contain exactly one this-system component");
+      if (p[2] === "preview") return { title: source.metadata.title, systemName: source["system-characteristics"]["system-name"], profileTitle: profile.title || profile.id, releaseId: release.id, sourceUuid: source.uuid };
+      const now = new Date().toISOString(), id = randomUUID(), oscal = copyUploadedSsp(body.oscal, id, now);
+      this.valid(oscal, profile, release.id);
+      const imported: Ssp = { id: "current", sspId: id, tenantId: user.tid, ownerId: user.oid, access: [], createdAt: now, createdBy: user.oid, modifiedAt: now, modifiedBy: user.oid, currentRevision: 1, version: 1, archived: false, releaseId: release.id, profileId: profile.id, oscal };
+      // Always create a fresh private plan: file metadata cannot restore app ACLs,
+      // impersonate an author, replace another SSP or restore an attestation.
+      await this.repo.create(imported, this.revision(imported, await this.actorIdentity(user)), { ...this.audit(imported, user, "import"), sourceUuid: source.uuid, sourceHash: hash(body.oscal) });
+      return imported;
+    }
     if (!p[1]) {
       if (method === "GET")
         return (await this.repo.list(user)).filter(s => !s.deleting).map((s) => ({

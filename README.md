@@ -53,3 +53,5 @@ The UI supports the initial SSP workflow; it is not an assessment/compliance cer
 Deployment acceptance must verify real Entra sign-in, Cosmos transactional behavior and read/edit/security identities in the target tenant. Local tests cannot prove the deployed Azure trust boundary. See the runbook for the release checklist. The application shell and sign-in assets are public; SSP and controlled-content API responses require validated single-tenant access tokens. No SSP content is built into the static bundle.
 
 App Admin provides protected raw storage exploration, permanent SSP deletion and a staged OSCAL library. Configure its role through the deployment pipeline; see [App Admin and reference handling](docs/app-admin.md).
+
+Previously downloaded SSP JSON files can be restored with **Upload SSP**. See [SSP upload and copy behavior](docs/ssp-upload.md); the UI includes a requirements help dialog.
