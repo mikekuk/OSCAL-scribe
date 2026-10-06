@@ -43,12 +43,13 @@ export class CosmosAdminStore implements AdminStore {
   async partitions(query = "", cursor?: string) {
     // ORDER BY is required for resumable DISTINCT queries across partitions.
     const result = await this.db.container("content").items.query<string>({ query: "SELECT DISTINCT VALUE c.releaseId FROM c WHERE CONTAINS(c.releaseId, @query) ORDER BY c.releaseId", parameters: [{ name: "@query", value: query }] }, { maxItemCount: 25, continuationToken: cursor }).fetchNext();
-    return { items: result.resources, cursor: result.continuationToken || undefined };
+    // Empty Cosmos pages can omit resources; keep the JSON page contract intact.
+    return { items: result.resources ?? [], cursor: result.continuationToken || undefined };
   }
   async raw(container: "ssps" | "content", partition: string, cursor?: string, query = "") {
     const key = container === "ssps" ? "sspId" : "releaseId";
     const result = await this.db.container(container).items.query<Json>({ query: `SELECT * FROM c WHERE c.${key} = @partition AND CONTAINS(c.id, @query) ORDER BY c.id`, parameters: [{ name: "@partition", value: partition }, { name: "@query", value: query }] }, { partitionKey: partition, maxItemCount: 1, continuationToken: cursor }).fetchNext();
-    return { items: result.resources, cursor: result.continuationToken || undefined };
+    return { items: result.resources ?? [], cursor: result.continuationToken || undefined };
   }
   async audit(event: Json) { await this.db.container("audit").items.create(event); }
 }
