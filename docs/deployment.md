@@ -45,16 +45,21 @@ which is useful for the first work-dev network setup. No merge automatically dep
    Application resources inherit the app group's region; `location` controls state storage and `web_location` the SWA region.
 3. Create Azure Resource Manager service connections using **workload identity federation**, not client secrets.
    For personal test the existing single connection remains supported. For dev use the three connections above.
-4. Grant infrastructure Contributor plus scoped role-assignment/role-definition administration and deletion-lock management on the app group.
-   Contributor alone excludes `Microsoft.Authorization/locks/write` and `locks/delete`; include these in the approved
-   infrastructure administration role.
+4. On the **application resource group**, give the infrastructure service principal **Contributor** plus
+   **User Access Administrator**. The latter permits custom role definitions, role assignments and deletion locks;
+   Contributor alone cannot manage these. **Role Based Access Control Administrator is not a substitute**: it permits
+   role assignments but not `Microsoft.Authorization/roleDefinitions/write`. A company-approved custom role can replace
+   User Access Administrator if it includes the necessary role-definition, role-assignment and lock read/write/delete
+   actions at this scope. Keep these permissions available for future infrastructure plan/apply/destroy operations;
+   they are separate from the temporary state-group bootstrap permissions.
    The infrastructure identity manages Entra applications: grant/consent `Application.ReadWrite.OwnedBy`,
    `Application.Read.All`, and `AppRoleAssignment.ReadWrite.All` after tenant-admin review. It is an explicit
    application owner. These Graph grants are directory-wide and must not be given to ordinary deployment/publishing.
-5. On the state group, temporarily grant bootstrap Contributor and scoped role-assignment administration, including
-   deletion-lock management. Bootstrap creates an Entra-only account/container, versioning, 30-day blob/container
+5. On the **state resource group**, temporarily grant the bootstrap identity **Contributor** plus
+   **User Access Administrator** (or an approved equivalent including role-assignment and deletion-lock management). Bootstrap creates an Entra-only account/container, versioning, 30-day blob/container
    soft deletion, a CanNotDelete lock and container-scoped Storage Blob Data Contributor for infrastructure.
-   Remove the broad state-group roles afterward; retain the container role for Terraform state locking and writes.
+   Remove the broad state-group roles only after Bootstrap succeeds and the container role is verified; retain that
+   container role for Terraform state locking and writes. Do not remove the separate application-group permissions.
 6. Fill the selected `scribeEnvironment` JSON. Use service-principal **object IDs**, not application/client IDs.
    `owner_object_ids` is for trusted owners; `security_user_ids` grants broad SSP access; `app_admin_user_ids`
    is optional and separately grants administration. Dev requires three distinct pipeline object IDs and rejects
@@ -137,28 +142,10 @@ The publisher discovers the Cosmos endpoint using Reader on the selected applica
 Terraform state. Published releases remain immutable through normal publisher operations and the active pointer moves last.
 The API can write staged library data but its Cosmos role cannot modify the published `content` container.
 
-## Content publication fails to find Cosmos
-
-Backend setup (`pipelines/bootstrap.yml`) creates or updates **only Terraform state storage**. It does not recreate
-Cosmos after Operations `action: destroy`. A successful build also does not create resources when `deploy` is false.
-Use this order after a disposable test rebuild:
-
-1. Complete Backend setup with `config/test.json`, the existing service connection and protected variable group.
-2. Run **Build and deploy** (`azure-pipelines.yml`) on `main` with `deploy: true` and `deployApplication: true`.
-   Use the same `configFile` and `variableGroup`; complete plan approval and verify the infrastructure and application
-   deployment jobs succeed, not merely the Build stage.
-3. Run **Scribe – Demo content** (`pipelines/demo.yml`) with that same test configuration and its publisher connection.
-   The default personal connection is `oscal-scribe-azure`; use your existing exact connection name if different.
-
-If target discovery reports **zero** Cosmos accounts, check whether the infrastructure job completed and whether
-`scribeEnvironment.resource_group_name` names the deployed application group. Check publisher access if a Cosmos
-account is visible to your personal Azure login but not to the pipeline. If it reports **multiple** accounts, resolve
-the configuration/ownership ambiguity; do not delete databases or select the first account merely to pass the check.
-
-Both publication pipelines stop immediately if discovery fails. The publisher also rejects an empty `COSMOS_ENDPOINT`
-before reading or publishing the release. Older pipeline revisions may show a second `Invalid URL` error because
-an `export` command hid the failed lookup; that second error is a consequence, not a separate database problem.
-No teardown or state-backend deletion is required to resolve this publication error.
+For a new installation, complete **Backend setup → Build and deploy → content publication**, using the same selected
+profile and protected configuration. Backend setup manages Terraform state storage; **Build and deploy**, with
+`deploy: true`, creates Cosmos. Publication requires exactly one Cosmos account in the selected application group and
+stops before any writes if endpoint discovery fails. Personal test can use Demo content; work dev uses approved content.
 
 ## Stop and restart through Operations
 
