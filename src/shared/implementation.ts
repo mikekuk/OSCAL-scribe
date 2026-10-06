@@ -1,3 +1,4 @@
+import { localComponentType } from "./component-types";
 import type { Json } from "./types";
 import { statementParts, uuid } from "./oscal";
 
@@ -17,10 +18,10 @@ export function systemComponent(b: Json): Json {
   const components = b["system-implementation"].components;
   let system = components.find((c: Json) => c.type === "this-system");
   if (!system) {
-    system = { uuid: uuid(), type: "this-system", title: "System", description: "The system covered by this plan.", status: { state: "under-development" } };
+    system = { uuid: uuid(), type: "this-system", title: "This system", description: "The system covered by this plan.", status: { state: "under-development" } };
     components.unshift(system);
   }
-  system.title = "System";
+  system.title = "This system";
   return system;
 }
 export function requirement(b: Json, controlId: string): Json {
@@ -241,7 +242,7 @@ export function addLocalComponent(b: Json, title: string, type: string, descript
   const name = title.trim();
   if (!name || name.length > 120) throw Error("Enter a component name of 1–120 characters");
   if (b["system-implementation"].components.some((c: Json) => c.title.toLowerCase() === name.toLowerCase())) throw Error("That component name already exists");
-  if (!["software", "hardware", "service", "policy", "process", "procedure"].includes(type)) throw Error("Choose a component type");
+  type = localComponentType(type);
   const component = { uuid: uuid(), title: name, type, description: description.trim() || "System-local component: " + name + ".", status: { state: "under-development" } };
   b["system-implementation"].components.push(component);
   return component;

@@ -1,3 +1,4 @@
+import { componentTypes, localComponentType } from "../shared/component-types";
 import { showAdmin } from "./admin-view";
 import { PublicClientApplication } from "@azure/msal-browser";
 import { escapeHtml as h } from "../shared/lens/views.mjs";
@@ -271,11 +272,14 @@ function section(): string {
 function components() {
   const b = body(), imported = importedComponentIds(baseline.components), disabled = editable() ? "" : "disabled";
   const locals: Json[] = b["system-implementation"].components.filter((c: Json) => !imported.has(c.uuid));
-  const types = ["software", "hardware", "service", "policy", "process", "procedure"];
-  return `<div class="component-heading"><p>Use System for shared implementation, or add components that match your system. Assign controls using Copy or Move in Controls / Implementation.</p><button id="toggle-add-component" class="quiet component-add" aria-label="Add local component" aria-expanded="${addComponentOpen}" title="Add local component" ${disabled}>+</button></div>
-    ${locals.map(c => c.type === "this-system" ? '<section><h3>System</h3><p>Default component for system-wide implementation. Always included in this SSP.</p></section>' : `<section><div class="component-heading"><h3>${h(c.title)}</h3><button class="quiet" data-delete-local-component="${h(c.uuid)}" ${disabled}>Delete component</button></div><p class="legend">Deleting this component returns any uniquely assigned work to System.</p>
+  // Preserve custom types already present in an SSP; never silently select another value.
+  const typeOptions = (selected: string) => componentTypes.map(([type, description]) => `<option value="${type}" ${selected === type ? "selected" : ""} ${type === "this-system" ? "disabled" : ""}>${type} — ${h(description)}${type === "this-system" ? " (default component)" : ""}</option>`).join("")
+    + (selected && !componentTypes.some(([type]) => type === selected) ? `<option value="${h(selected)}" selected>${h(selected)} — locally defined</option>` : "")
+    + '<option value="">Locally defined type…</option>';
+  return `<div class="component-heading"><p>Use This system for shared implementation, or add components that match your system. Assign controls using Copy or Move in Controls / Implementation.</p><button id="toggle-add-component" class="quiet component-add" aria-label="Add local component" aria-expanded="${addComponentOpen}" title="Add local component" ${disabled}>+</button></div>
+    ${locals.map(c => c.type === "this-system" ? '<section><h3>This system</h3><p><strong>Type: this-system</strong> — The system as a whole. Always included in this SSP.</p></section>' : `<section><div class="component-heading"><h3>${h(c.title)}</h3><button class="quiet" data-delete-local-component="${h(c.uuid)}" ${disabled}>Delete component</button></div><p class="legend">Deleting this component returns any uniquely assigned work to This system.</p>
       <label class="field">Component name<input data-local-component="${h(c.uuid)}" data-component-field="title" value="${h(c.title)}" ${disabled}></label>
-      <label class="field">Component type<select data-local-component="${h(c.uuid)}" data-component-field="type" ${disabled}>${types.map(type => `<option value="${type}" ${c.type === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+      <label class="field">Component type<select data-local-component="${h(c.uuid)}" data-component-field="type" ${disabled}>${typeOptions(c.type)}</select></label>
       <label class="field">Description<textarea data-local-component="${h(c.uuid)}" data-component-field="description" ${disabled}>${h(c.description)}</textarea></label></section>`).join("")}
 
     <h3>Published components</h3><p>Select a published component to import its statement implementations. Blue identifies imported components; each implementation keeps its own OSCAL status.</p>
@@ -283,7 +287,7 @@ function components() {
       const i = b["system-implementation"].components.findIndex((x: Json) => x.uuid === c.uuid);
       return `<section class="imported-component"><label class="component-title"><input type="checkbox" data-component="${h(c.uuid)}" ${i >= 0 ? "checked" : ""} ${disabled}>${h(c.title)}</label><p>${h(c.description)}</p><details><summary>Published control contributions</summary>${(c["control-implementations"] || []).flatMap((ci: Json) => ci["implemented-requirements"].map((r: Json) => `<p><strong>${h(r["control-id"])}</strong> ${h(r.description)}</p>${(r.statements || []).map((x: Json) => `<p><strong>${h(x["statement-id"])}</strong> ${h(x.description)}</p>`).join("")}`)).join("")}</details>${i >= 0 ? field("How this system uses the service", `system-implementation/components/${i}/remarks`, "textarea") : ""}</section>`;
     }).join("")}
-    ${addComponentOpen ? `<section><h3>Add a component to this SSP</h3><div class="form-grid"><label class="field">New component name<input id="new-component-title" placeholder="Component name" ${disabled}></label><label class="field">New component type<select id="new-component-type" ${disabled}>${types.map(type => `<option>${type}</option>`).join("")}</select></label></div><label class="field">New component description<textarea id="new-component-description" ${disabled}></textarea></label><button id="add-component" ${disabled}>Add component</button></section>` : ""}`;
+    ${addComponentOpen ? `<section><h3>Add a component to this SSP</h3><div class="form-grid"><label class="field">New component name<input id="new-component-title" placeholder="Component name" ${disabled}></label><label class="field">New component type<select id="new-component-type" ${disabled}>${typeOptions("software")}</select></label></div><label class="field">New component description<textarea id="new-component-description" ${disabled}></textarea></label><button id="add-component" ${disabled}>Add component</button></section>` : ""}`;
 }
 function controls() {
   const rr = rows(), b = body(), imported = importedComponentIds(baseline.components), disabled = editable() ? "" : "disabled";
@@ -418,15 +422,24 @@ function bind() {
   }));
   document.querySelector("#add-component")?.addEventListener("click", () => void run(() => {
     if (!editable()) return;
+    const selected = document.querySelector<HTMLSelectElement>("#new-component-type")!.value;
+    const type = selected || prompt("Enter a locally defined component type:");
+    if (type === null) return;
     const component = addLocalComponent(body(), document.querySelector<HTMLInputElement>("#new-component-title")!.value,
-      document.querySelector<HTMLSelectElement>("#new-component-type")!.value, document.querySelector<HTMLTextAreaElement>("#new-component-description")!.value);
+      type, document.querySelector<HTMLTextAreaElement>("#new-component-description")!.value);
     transferTarget = component.uuid; addComponentOpen = false; mark(); render();
   }));
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-local-component]").forEach(e => e.onchange = () => void run(() => {
     if (!editable()) return;
     const component = body()["system-implementation"].components.find((c: Json) => c.uuid === e.dataset.localComponent);
     if (!component || importedComponentIds(baseline.components).has(component.uuid) || component.type === "this-system") throw Error("Choose an editable local component");
-    const field = e.dataset.componentField!, value = e.value.trim();
+    const field = e.dataset.componentField!;
+    let value = e.value.trim();
+    if (field === "type") {
+      const custom = value || prompt("Enter a locally defined component type:", component.type);
+      if (custom === null) { render(); return; }
+      value = localComponentType(custom);
+    }
     if (!value || (field === "title" && value.length > 120)) throw Error("Enter a component name and description");
     if (field === "title" && body()["system-implementation"].components.some((c: Json) => c.uuid !== component.uuid && c.title.toLowerCase() === value.toLowerCase())) throw Error("That component name already exists");
     component[field] = value; mark(); render();

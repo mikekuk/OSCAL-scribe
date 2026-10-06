@@ -1,6 +1,6 @@
 # Control and component workspace
 
-The SSP starts with a local **System** component (`type: this-system`). Simple systems can keep all implementation here. Larger systems can add components such as Windows servers, Linux servers or a database service using the small **+** button on **Components**. These components exist in the SSP only; adding one does not create or publish a component-definition file.
+The SSP starts with a local **This system** component (`type: this-system`). Simple systems can keep all implementation here. Larger systems can add components such as Windows servers, Linux servers or a database service using the small **+** button on **Components**. These components exist in the SSP only; adding one does not create or publish a component-definition file.
 
 Select approved published components in the same page. A selected component imports its statement implementations, assigned to that component. Imported sources are blue. Local components and imported components coexist in the SSP, and component names are separate from implementation statuses.
 
@@ -77,3 +77,11 @@ This follows the [NIST SSP model](https://pages.nist.gov/OSCAL/learn/concepts/la
 `src/shared/implementation.ts` owns assignment, copy/move, native statuses and component/role cleanup. The transfer function validates the whole batch before mutation and renews copied UUIDs plus internal references. `src/web/control-view.ts` renders independent component panels and search matching. `src/web/main.ts` binds controls using both control IDs and component UUIDs, so edits cannot leak between Windows and Linux panels.
 
 Tests cover independent copies, moves, destination conflicts, invalid batches, imported-source protection, strict completion across components, native status persistence, standard-property preservation, read-only rendering, search, OSCAL schema/reference validity and the complete worked example. Existing baseline ODP values and imported profile text remain unchanged.
+
+## Component types
+
+The default **This system** component has type `this-system`, meaning the system as a whole. It is retained as the unique whole-system component; additional components cannot use this reserved type in the editor. `system` means an **external** system, not this SSP’s default component.
+
+The type dropdown offers `system`, `interconnection`, `software`, `hardware`, `service`, `policy`, `physical`, `process-procedure`, `plan`, `guidance`, `standard`, `validation`, `region`, `zone`, `resource-container`, and `network`, with short descriptions. `this-system` is shown as reserved for the default component. The former separate Process and Procedure suggestions are replaced by `process-procedure`.
+
+OSCAL permits locally defined type values. Choose **Locally defined type…** to enter one; existing custom types remain selected and are preserved when editing. The dropdown vocabulary does not change the pinned OSCAL schema: values such as `region`, `zone`, and `resource-container` are accepted through its open string type. Selected values are written directly to `system-implementation.components[].type` in the SSP. Imported component types remain unchanged.
