@@ -3,7 +3,7 @@ import {
   type Container,
   type OperationInput,
 } from "@azure/cosmos";
-import { DefaultAzureCredential } from "@azure/identity";
+import { ManagedIdentityCredential } from "@azure/identity";
 import type {
   Repository,
   Ssp,
@@ -14,10 +14,10 @@ import type {
 } from "../shared/types";
 import { security, appAdmin } from "./authz";
 import { ApiError, hash } from "./service";
-export const cosmos = () =>
+export const cosmos = (credential: { getToken: ManagedIdentityCredential["getToken"] } = new ManagedIdentityCredential()) =>
   new CosmosClient({
     endpoint: process.env.COSMOS_ENDPOINT!,
-    aadCredentials: new DefaultAzureCredential(),
+    aadCredentials: credential,
   });
 export class CosmosRepository implements Repository {
   constructor(public container: Container) {}
@@ -29,20 +29,12 @@ export class CosmosRepository implements Repository {
       throw e;
     }
   }
-  async list(u: User) {
-    const query = (security(u) || appAdmin(u))
-      ? 'SELECT * FROM c WHERE c.id = "current" AND c.tenantId = @tid'
-      : 'SELECT * FROM c WHERE c.id = "current" AND c.tenantId = @tid AND (c.ownerId = @oid OR EXISTS(SELECT VALUE a FROM a IN c.access WHERE a.oid = @oid))';
-    const { resources } = await this.container.items
-      .query<Ssp>({
-        query,
-        parameters: [
-          { name: "@tid", value: u.tid },
-          ...(!(security(u) || appAdmin(u)) ? [{ name: "@oid", value: u.oid }] : []),
-        ],
-      })
-      .fetchAll();
-    return resources.filter(s => !s.deleting || appAdmin(u));
+  async list(u: User, cursor?: string) {
+    const privileged = security(u) || appAdmin(u);
+    const projection = 'c.sspId, c.ownerId, c.access, c.modifiedAt, c.currentRevision, c.version, c.archived, c.profileId, c.lastAttestation, c.oscal["system-security-plan"].metadata.title AS title, c.oscal["system-security-plan"]["system-characteristics"]["system-name"] AS systemName';
+    const query = 'SELECT ' + projection + ' FROM c WHERE c.id = "current" AND c.tenantId = @tid AND (NOT IS_DEFINED(c.deleting) OR c.deleting = false)' + (privileged ? '' : ' AND (c.ownerId = @oid OR EXISTS(SELECT VALUE a FROM a IN c.access WHERE a.oid = @oid))') + ' ORDER BY c.sspId';
+    const result = await this.container.items.query<Json>({ query, parameters: [{ name: '@tid', value: u.tid }, ...(!privileged ? [{name:'@oid',value:u.oid}] : [])] }, { maxItemCount: 25, continuationToken: cursor }).fetchNext();
+    return { items: result.resources, cursor: result.continuationToken || undefined };
   }
   async adminPage(user: User, query: string, state: string, cursor?: string) {
     const clauses = ['c.id = "current"', 'c.tenantId = @tenant'];
@@ -124,23 +116,18 @@ export class CosmosRepository implements Repository {
     }, { partitionKey: id }).fetchAll();
     return resources;
   }
-  async records(id: string, prefix: string) {
-    return (
-      await this.container.items
-        .query<Json>(
-          {
-            query:
-              "SELECT * FROM c WHERE c.sspId = @id AND STARTSWITH(c.id, @prefix)",
-            parameters: [
-              { name: "@id", value: id },
-              { name: "@prefix", value: prefix },
-            ],
-          },
-          { partitionKey: id },
-        )
-        .fetchAll()
-    ).resources;
+  async record(id: string, recordId: string) {
+    try { return (await this.container.item(recordId, id).read<Json>()).resource; }
+    catch (e: any) { if (e.code === 404) return undefined; throw e; }
   }
+  async records(id: string, prefix: string, cursor?: string) {
+    const result = await this.container.items.query<Json>({
+      query: 'SELECT c.id, c.revision, c.actor, c.actorIdentity, c.at, c.releaseId, c.profileId, c.hash, c.due, c.systemRole FROM c WHERE c.sspId = @id AND STARTSWITH(c.id, @prefix) ORDER BY c.id',
+      parameters: [{name:'@id',value:id},{name:'@prefix',value:prefix}],
+    }, { partitionKey: id, maxItemCount: 25, continuationToken: cursor }).fetchNext();
+    return { items: result.resources, cursor: result.continuationToken || undefined };
+  }
+
 }
 export class CosmosContent implements ContentStore {
   cache = new Map<string, Release>();

@@ -53,3 +53,53 @@ variable "app_admin_user_ids" {
   default     = []
   description = "Target-tenant user object IDs assigned the separate, destructive App Admin application role."
 }
+
+variable "allow_localhost_redirect" { type = bool }
+
+variable "allow_raw_browser" { type = bool }
+
+variable "allow_permanent_delete" { type = bool }
+
+variable "private_data" { type = bool }
+
+variable "protect_data" { type = bool }
+
+variable "function_sku" { type = string }
+
+variable "requests_per_minute" { type = number }
+
+variable "expensive_requests_per_minute" { type = number }
+
+variable "log_retention_days" { type = number }
+
+variable "log_daily_cap_gb" { type = number }
+
+variable "backup_retention_days" { type = number }
+
+resource "terraform_data" "security_policy" {
+  input = var.environment
+  lifecycle {
+    precondition {
+      condition     = contains(["test", "dev", "prod"], var.environment) && (!var.private_data || var.function_sku == "EP1")
+      error_message = "Invalid environment or private-data hosting plan."
+    }
+    precondition {
+      condition     = var.environment == "test" || (var.private_data && !var.allow_localhost_redirect && (var.protect_data || var.allow_destroy) && var.deployment_object_id != var.publisher_object_id && !contains(var.owner_object_ids, var.deployment_object_id) && !contains(var.owner_object_ids, var.publisher_object_id))
+      error_message = "Work environments require isolated identities, private data, protection and HTTPS-only redirects."
+    }
+    precondition {
+      condition     = var.environment != "prod" || (var.protect_data && !var.allow_destroy && !var.allow_raw_browser && !var.allow_permanent_delete && var.backup_retention_days == 30 && var.log_retention_days >= 90)
+      error_message = "Production security minimums are not satisfied."
+    }
+  }
+}
+
+variable "allow_destroy" { type = bool }
+
+variable "vnet_cidr" {
+  type = string
+  validation {
+    condition     = can(cidrhost(var.vnet_cidr, 0)) && endswith(var.vnet_cidr, "/16")
+    error_message = "Supply a company-approved IPv4 /16 network."
+  }
+}

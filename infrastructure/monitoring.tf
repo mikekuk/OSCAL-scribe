@@ -3,8 +3,8 @@ resource "azurerm_log_analytics_workspace" "main" {
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   sku                 = "PerGB2018"
-  retention_in_days   = 30
-  daily_quota_gb      = 0.1
+  retention_in_days   = var.log_retention_days
+  daily_quota_gb      = var.log_daily_cap_gb
 }
 resource "azurerm_application_insights" "main" {
   name                 = local.name
@@ -12,10 +12,10 @@ resource "azurerm_application_insights" "main" {
   location             = data.azurerm_resource_group.main.location
   workspace_id         = azurerm_log_analytics_workspace.main.id
   application_type     = "web"
-  daily_data_cap_in_gb = 0.1
+  daily_data_cap_in_gb = var.log_daily_cap_gb
 }
 resource "azurerm_consumption_budget_resource_group" "test" {
-  name              = "scribe-test-monthly"
+  name              = "scribe-${var.environment}-monthly"
   resource_group_id = data.azurerm_resource_group.main.id
   amount            = var.monthly_budget
   time_grain        = "Monthly"

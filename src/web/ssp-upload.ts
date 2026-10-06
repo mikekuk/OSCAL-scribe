@@ -29,7 +29,10 @@ export function showSspUpload(layout: (html: string) => void, api: (path: string
       const result = await api("ssps/import/preview", "POST", { oscal: candidate });
       if (current !== generation || !preview.isConnected) return;
       doc = candidate;
-      preview.innerHTML = `<h3>${h(result.systemName)}</h3><p>${h(result.title)}</p><p>Baseline: ${h(result.profileTitle)}</p><p>Original release: <code>${h(result.releaseId)}</code></p><p>Ready to import as a new private plan owned by you. Saved history starts at revision 1.</p>`;
+      preview.replaceChildren();
+      for (const [tag, text] of [['h3',result.systemName],['p',result.title],['p','Baseline: '+result.profileTitle],['p','Original release: '+result.releaseId],['p','Ready to import as a new private plan owned by you. Saved history starts at revision 1.']]) {
+        const node = document.createElement(tag); node.textContent = text; preview.append(node);
+      }
       submit.disabled = false;
     } catch (error) { if (current === generation) preview.textContent = errorText(error); }
     finally { review.disabled = false; }

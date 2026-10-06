@@ -5,10 +5,13 @@ import { ApiError } from "./service";
 export class MemoryRepository implements Repository {
   current = new Map<string, Ssp>();
   history = new Map<string, Json[]>();
-  async list(u: User) {
-    return structuredClone(
-      [...this.current.values()].filter((s) => canRead(u, s) || (appAdmin(u) && u.tid === s.tenantId)),
-    );
+  private page(items: Json[], cursor?: string) {
+    const offset = Number(cursor || 0);
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new ApiError(400, 'Invalid page');
+    return { items: structuredClone(items.slice(offset, offset + 25)), cursor: offset + 25 < items.length ? String(offset + 25) : undefined };
+  }
+  async list(u: User, cursor?: string) {
+    return this.page([...this.current.values()].filter(s => canRead(u,s)).sort((a,b) => a.sspId.localeCompare(b.sspId)).map(({oscal, ...s}) => ({...s, title:oscal['system-security-plan'].metadata.title, systemName:oscal['system-security-plan']['system-characteristics']['system-name']})), cursor);
   }
   async get(id: string) {
     return structuredClone(this.current.get(id));
@@ -42,9 +45,10 @@ export class MemoryRepository implements Repository {
   async revisionActors(id: string, ids: string[]) {
     return [...new Set((this.history.get(id) || []).filter(r => r.id.startsWith("revision:") && ids.includes(r.actor)).map(r => r.actor as string))];
   }
-  async records(id: string, prefix: string) {
-    return structuredClone(
-      (this.history.get(id) || []).filter((x) => x.id.startsWith(prefix)),
-    );
+  async record(id: string, recordId: string) {
+    return structuredClone((this.history.get(id) || []).find(r => r.id === recordId));
+  }
+  async records(id: string, prefix: string, cursor?: string) {
+    return this.page((this.history.get(id) || []).filter(x => x.id.startsWith(prefix)).sort((a,b) => a.id.localeCompare(b.id)).map(({oscal,...meta}) => meta), cursor);
   }
 }

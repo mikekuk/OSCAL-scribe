@@ -1,3 +1,4 @@
+import { safePolicy, type SecurityPolicy } from "./security";
 import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
 import { ApiError, hash } from "./service";
@@ -74,7 +75,7 @@ export function referenceProblems(entries: LibraryEntry[]): string[] {
   return [...errors];
 }
 export class AdminService {
-  constructor(private repo: Repository, private store: AdminStore) {}
+  constructor(private repo: Repository, private store: AdminStore, private policy: SecurityPolicy = safePolicy) {}
   private async readAsset(entry: LibraryEntry) {
     const doc = await this.store.asset(entry.id);
     if (hash(doc) !== entry.hash) throw new ApiError(503, "Library document integrity check failed");
@@ -82,6 +83,7 @@ export class AdminService {
   }
   async request(user: User, method: string, p: string[], body: Json) {
     if (!user.roles.includes("AppAdmin")) throw new ApiError(403, "App Admin role required");
+    if (method === "DELETE" && !this.policy.permanentDelete) throw new ApiError(403, "Permanent deletion is disabled in this environment");
     const log = (operation: string, target: string) => this.store.audit({ id: "admin-audit:" + randomUUID(), releaseId: "admin-audit", operation, target, actor: user.oid, tenantId: user.tid, at: new Date().toISOString() });
     const query = body.query ?? "", cursor = body.cursor;
     if (typeof query !== "string" || query.length > 200 || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 16000))) throw new ApiError(400, "Invalid search or page cursor");
@@ -91,6 +93,7 @@ export class AdminService {
       return this.repo.adminPage(user, query, state, cursor);
     }
     if (p[0] === "ssps" && p[1] && method === "DELETE" && p.length === 2) {
+      if (!this.policy.permanentDelete) throw new ApiError(403, "Permanent deletion is disabled in this environment");
       const s = await this.repo.get(p[1]);
       if (!s || s.tenantId !== user.tid) throw new ApiError(404, "SSP not found");
       if (body.confirm !== s.sspId || body.version !== s.version) throw new ApiError(409, "Confirm the SSP ID and current version before permanent deletion");
@@ -99,14 +102,21 @@ export class AdminService {
       await log("ssp-deleted", s.sspId);
       return { deleted: s.sspId };
     }
-    if (p[0] === "partitions" && ["GET", "POST"].includes(method) && p.length === 1) return this.store.partitions(query, cursor);
+    if (p[0] === "partitions" && ["GET", "POST"].includes(method) && p.length === 1) {
+      if (!this.policy.rawBrowser) throw new ApiError(403, "Raw browsing is disabled in this environment");
+      await log("raw-partitions-read", "content");
+      return this.store.partitions(query, cursor);
+    }
+    if (p[0] === "capabilities" && method === "GET") return this.policy;
     if (p[0] === "raw" && method === "POST" && p.length === 1) {
+      if (!this.policy.rawBrowser) throw new ApiError(403, "Raw browsing is disabled in this environment");
       if (!["ssps", "content"].includes(body.container) || typeof body.partition !== "string" || body.partition.length > 200
           || (body.cursor !== undefined && (typeof body.cursor !== "string" || body.cursor.length > 16000))) throw new ApiError(400, "Choose a container and partition");
       if (body.container === "ssps") {
         const s = await this.repo.get(body.partition);
         if (!s || s.tenantId !== user.tid) throw new ApiError(404, "SSP not found");
       }
+      await log("raw-read", body.container + "/" + body.partition);
       return this.store.raw(body.container, body.partition, body.cursor, query);
     }
     if (p[0] !== "library") throw new ApiError(404, "Admin operation not found");
@@ -116,13 +126,16 @@ export class AdminService {
       const problems = referenceProblems(library.entries);
       if (problems.length) throw new ApiError(422, "Resolve library references before export", problems);
       if (!library.entries.some(e => e.model === "profile")) throw new ApiError(422, "Add at least one profile before publication export");
-      const sources = await Promise.all(library.entries.map(async e => ({ path: e.path, doc: await this.readAsset(e) })));
+      await log("library-export", "library");
+      const sources = [];
+      for (const entry of library.entries) sources.push({ path: entry.path, doc: await this.readAsset(entry) });
       // Stable IDs must also meet the existing publisher's profile-ID grammar.
       return { manifest: { demo: false, sources: sources.map(s => s.path), profiles: library.entries.filter(e => e.model === "profile").map(e => ({ id: e.uuid, path: e.path })), provenance: { libraryVersion: library.version, exportedAt: new Date().toISOString(), actor: user.oid } }, sources };
     }
     if (method === "GET" && p.length === 2) {
       const e = library.entries.find(e => e.id === p[1]);
       if (!e) throw new ApiError(404, "Library document not found");
+      await log("library-read", e.id);
       return this.readAsset(e);
     }
     if (method === "POST" && p.length === 1) {

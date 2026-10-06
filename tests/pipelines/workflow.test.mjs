@@ -16,16 +16,16 @@ function visit(v,f){
 test('pipeline YAML parses and every referenced local template exists',()=>{
  for(const f of files){const d=parseDocument(readFileSync(f,'utf8'));assert.deepEqual(d.errors,[],f);visit(d.toJS(),f);}
 });
-test('main updates deploy, PRs are excluded, infrastructure approval and shared lock remain',()=>{
+test('main builds safely, explicit deployments verify artifacts, PRs are excluded, infrastructure approval and shared lock remain',()=>{
  const d=parseDocument(readFileSync('azure-pipelines.yml','utf8')).toJS();
  assert.deepEqual(d.trigger.branches.include,['main']);
- assert.equal(d.parameters.find(p=>p.name==='deploy').default,true);
+ assert.equal(d.parameters.find(p=>p.name==='deploy').default,false);
  const stages=Object.values(d.stages[1])[0];
  assert.match(stages.find(s=>s.stage==='Plan').condition,/ne\(variables\['Build.Reason'\], 'PullRequest'\)/);
  assert.match(stages.find(s=>s.stage==='Review').condition,/hasChanges/);
  const deploy=stages.find(s=>s.stage==='Deploy');
  assert.equal(deploy.lockBehavior,'sequential');
- assert.equal(deploy.jobs[0].environment,'${{ parameters.environmentName }}');
+ assert.match(deploy.jobs[0].environment,/config\/dev.json/);
  assert.deepEqual(deploy.dependsOn,['Plan','Review']);
  const steps=deploy.jobs[0].strategy.runOnce.deploy.steps;
  assert.ok(steps.some(s=>s.download==='current' && s.artifact==='application'));
@@ -35,7 +35,7 @@ test('destroy is manually reviewed and demo is an independent opt-in pipeline',(
  const operations=readFileSync('pipelines/operations.yml','utf8');
  assert.match(operations,/ManualValidation@1/);
  assert.match(operations,/dependsOn: ConfirmDestroy/);
- assert.match(operations,/environment: \$\{\{ parameters.environmentName \}\}/);
+ assert.match(operations,/environment:.*scribe-dev/);
  const demo=readFileSync('pipelines/demo.yml','utf8');
  assert.match(demo,/trigger: none/);assert.match(demo,/allow_demo/);assert.match(demo,/ALLOW_DEMO_PUBLICATION=true/);
 });
@@ -54,4 +54,22 @@ test('directory lookup grants Graph read permission to the runtime managed ident
  assert.match(identity,/principal_object_id\s*= azurerm_linux_function_app.api.identity\[0\].principal_id/);
  assert.match(identity,/microsoft_graph.app_role_ids\["User.Read.All"\]/);
  assert.ok(!identity.includes('app_role_ids["Directory.ReadWrite.All"]'));
+});
+
+test('work deployment keeps infra and code under one environment lock with separate identities and network pools',()=>{
+ const d=parseDocument(readFileSync('azure-pipelines.yml','utf8')).toJS();
+ const stages=Object.values(d.stages[1])[0], deploy=stages.find(s=>s.stage==='Deploy');
+ const app=Object.values(deploy.jobs[1])[0][0];
+ assert.equal(app.deployment,'Application');assert.equal(app.dependsOn,'Deploy');
+ assert.equal(app.environment,deploy.jobs[0].environment);
+ assert.match(JSON.stringify(app.pool),/devAgentPool/);
+ const steps=app.strategy.runOnce.deploy.steps;
+ const azure=steps.find(s=>s.template==='pipelines/templates/azure-step.yml');
+ assert.equal(azure.parameters.role,'deployment');
+ assert.match(azure.parameters.serviceConnection,/deploymentServiceConnection/);
+ const swa=steps.find(s=>s.task==='AzureStaticWebApp@0');
+ assert.equal(swa.inputs.skip_app_build,true);assert.equal(swa.inputs.skip_api_build,true);
+ const content=parseDocument(readFileSync('pipelines/content.yml','utf8')).toJS();
+ assert.equal(content.parameters.find(p=>p.name==='contentSource').default,'nist-reference');
+ assert.equal(content.steps.find(s=>s.template==='templates/azure-step.yml').parameters.role,'publisher');
 });

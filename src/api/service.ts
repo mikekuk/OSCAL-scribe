@@ -1,7 +1,8 @@
+import { safePolicy, type SecurityPolicy, requestLimit } from "./security";
 import { copyUploadedSsp } from "../shared/ssp-import";
 import type { Directory } from "./directory";
 import type { Person } from "../shared/types";
-import { AdminService, MAX_UPLOAD, type AdminStore } from "./admin";
+import { AdminService, type AdminStore } from "./admin";
 import { createHash, randomUUID } from "node:crypto";
 import { canRead, canEdit, canShare, canAttest, canAdminister } from "./authz";
 import { createSsp, integrity } from "../shared/oscal";
@@ -53,6 +54,7 @@ export class Service {
     public content: ContentStore,
     public admin?: AdminStore,
     public directory?: Directory,
+    public policy: SecurityPolicy = safePolicy,
   ) {}
   async request(
     user: User | undefined,
@@ -64,8 +66,12 @@ export class Service {
     if (!user) throw new ApiError(401, "Authentication required");
     if (!user.roles.some((r) => ["User", "Security", "AppAdmin"].includes(r)))
       throw new ApiError(403, "Application assignment required");
+    const url = new URL(path, 'https://scribe.invalid/');
+    path = url.pathname;
+    const cursor = url.searchParams.get('cursor') || undefined;
+    if (cursor && cursor.length > 16000) throw new ApiError(400, 'Invalid page cursor');
     try {
-      bounded(body, user.roles.includes("AppAdmin") && /^\/?(?:api\/)?admin\/library\/?$/.test(path) ? MAX_UPLOAD + 1000 : 1_000_000);
+      bounded(body, requestLimit(user, method, path));
     } catch (e) {
       throw new ApiError(413, (e as Error).message);
     }
@@ -76,7 +82,7 @@ export class Service {
     if (p[0] === "admin") {
       if (!user.roles.includes("AppAdmin")) throw new ApiError(403, "App Admin role required");
       if (!this.admin) throw new ApiError(503, "Administration storage is unavailable");
-      return new AdminService(this.repo, this.admin).request(user, method, p.slice(1), body);
+      return new AdminService(this.repo, this.admin, this.policy).request(user, method, p.slice(1), body);
     }
     if (p[0] === "me" && method === "GET") return user;
     if (p[0] === "content" && method === "GET") {
@@ -129,16 +135,7 @@ export class Service {
       return imported;
     }
     if (!p[1]) {
-      if (method === "GET")
-        return (await this.repo.list(user)).filter(s => !s.deleting).map((s) => ({
-          ...s,
-          oscal: undefined,
-          title: s.oscal["system-security-plan"].metadata.title,
-          systemName:
-            s.oscal["system-security-plan"]["system-characteristics"][
-              "system-name"
-            ],
-        }));
+      if (method === "GET") return this.repo.list(user, cursor);
       if (method !== "POST") throw new ApiError(405, "Method not allowed");
       requireKeys(body, ["releaseId", "profileId", "systemName"]);
       if (
@@ -205,16 +202,16 @@ export class Service {
     if (method === "GET") {
       if (!p[2]) return s;
       if (p[2] === "revisions") {
-        const revisions = await this.repo.records(s.sspId, "revision:");
         if (p[3]) {
-          const r = revisions.find((x) => String(x.revision) === p[3]);
+          if (!/^[1-9][0-9]{0,9}$/.test(p[3])) throw new ApiError(400, "Invalid revision");
+          const r = await this.repo.record(s.sspId, "revision:" + p[3]);
           if (!r) throw new ApiError(404, "Revision not found");
           return r;
         }
-        return revisions.map((r) => ({ ...r, oscal: undefined }));
+        return this.repo.records(s.sspId, "revision:", cursor);
       }
       if (p[2] === "attestations")
-        return this.repo.records(s.sspId, "attestation:");
+        return this.repo.records(s.sspId, "attestation:", cursor);
     }
     if (p[2] === "validate" && method === "POST") {
       requireKeys(body, ["oscal"]);

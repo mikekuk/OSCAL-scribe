@@ -4,7 +4,7 @@ resource "azuread_application" "scribe" {
   display_name     = "${local.name} ${var.environment}"
   sign_in_audience = "AzureADMyOrg"
   owners           = var.owner_object_ids
-  single_page_application { redirect_uris = ["https://${azurerm_static_web_app.web.default_host_name}/", "http://localhost:5173/"] }
+  single_page_application { redirect_uris = concat(["https://${azurerm_static_web_app.web.default_host_name}/"], var.allow_localhost_redirect ? ["http://localhost:5173/"] : []) }
   api {
     requested_access_token_version = 2
     oauth2_permission_scope {

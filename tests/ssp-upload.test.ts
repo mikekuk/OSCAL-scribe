@@ -28,8 +28,8 @@ for(const role of ["User","Security","AppAdmin"]) test(`${role} can preview and 
  assert.equal(imported.oscal["system-security-plan"].metadata.version,"1");
  assert.deepEqual(imported.oscal["system-security-plan"]["control-implementation"],oscal["system-security-plan"]["control-implementation"]);
  assert.deepEqual(imported.oscal["system-security-plan"]["system-implementation"],oscal["system-security-plan"]["system-implementation"]);
- const revision=(await repo.records(imported.sspId,"revision:"))[0];
- assert.equal(revision.actor,user.oid);assert.equal(revision.actorIdentity.displayName,"Uploader");
+ const revision=await repo.record(imported.sspId,"revision:1");
+ assert.equal(revision!.actor,user.oid);assert.equal(revision!.actorIdentity.displayName,"Uploader");
  assert.deepEqual(validate(imported.oscal),[]);
  const again=await service.request(actor,"POST","ssps/import",{oscal});
  assert.notEqual(imported.sspId,again.sspId);assert.equal(repo.current.size,2);

@@ -7,17 +7,21 @@ Every production endpoint requires `Authorization: Bearer <Entra delegated acces
 | GET | /api/me | Trusted caller identifiers and application roles |
 | GET | /api/content | Active approved release, profile list, component definitions |
 | GET | /api/content/{release}/{profile} | Immutable resolved baseline and original sources |
-| GET | /api/ssps | Caller-accessible plan summaries |
+| GET | /api/ssps | Cursor-paged caller-accessible plan summaries |
 | POST | /api/ssps | `{releaseId,profileId,systemName}` |
 | GET | /api/ssps/{uuid} | Current plan and server-managed metadata |
 | PUT | /api/ssps/{uuid} | `{oscal}`; creates a revision |
 | POST | /api/ssps/{uuid}/share | `{oid,permission:read|edit|remove}` |
 | POST | /api/ssps/{uuid}/archive | `{}`; preserves all records |
-| GET | /api/ssps/{uuid}/revisions | Revision metadata |
+| GET | /api/ssps/{uuid}/revisions | Cursor-paged revision metadata |
 | GET | /api/ssps/{uuid}/revisions/{number} | Historical OSCAL, actor, timestamp and digest |
-| GET | /api/ssps/{uuid}/attestations | Immutable attestation records |
+| GET | /api/ssps/{uuid}/attestations | Cursor-paged immutable attestation records |
 | POST | /api/ssps/{uuid}/attest | `{revision,systemRole}`; current saved revision only |
 | POST | /api/ssps/{uuid}/validate | `{oscal?}`; saved document if omitted |
+
+`GET /ssps`, `/ssps/{uuid}/revisions` and `/ssps/{uuid}/attestations` return `{items, cursor?}` with at most 25 items. Pass the opaque `cursor` as a URL-encoded query parameter to continue; a page may be empty while still carrying a cursor. Lists and revisions return metadata, not full OSCAL documents. Fetch a specific revision for its document. Authorization is checked again for every page and revision.
+
+The Function entry point applies per-process, tenant/user request limits after authentication: 120 total and 10 expensive operations per minute by default, configurable within validated bounds. Writes, raw reads, exports and revision routes consume the expensive allowance. A 429 includes `Retry-After`; these limits reset on process recycle and are not a global quota. Nonempty bodies require JSON content type, oversized requests return 413, and JSON responses are capped at 60 MB. Security telemetry records actor/operation identifiers, never submitted documents.
 
 Mutating an existing SSP requires `If-Match` containing its numeric `version`. This metadata version also increments on sharing/archive/attestation, while `currentRevision` increments only on OSCAL saves. Cosmos conditional batch applies the authoritative ETag internally. Concurrent changes return 409, never silently overwrite. Clients must reload and reconcile.
 
@@ -29,10 +33,11 @@ Export retains a stable `urn:oscal-scribe:<release>:<profile>` import. The pinne
 
 ## App Admin endpoints
 
-All `/api/admin` routes require the verified `AppAdmin` app role. They accept no client SQL. SSP operations additionally enforce tenant identity.
+All `/api/admin` routes require the verified `AppAdmin` app role. Raw browsing/partition enumeration additionally require `allow_raw_browser`; every DELETE additionally requires `allow_permanent_delete`. Both default to false and disabled operations return 403 even with the role. They accept no client SQL. SSP operations additionally enforce tenant identity.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| GET | /api/admin/capabilities | Server-enforced raw-browser and permanent-deletion switches |
 | GET/POST | /api/admin/ssps | Up to 25 tenant SSP summaries; POST `{query?, state?, cursor?}` supports search and resumable deletion filters |
 | DELETE | /api/admin/ssps/:id | Purge the full SSP partition; body `{confirm: SSP_ID, version}` |
 | GET/POST | /api/admin/partitions | Up to 25 content partition IDs; POST `{query?, cursor?}` |

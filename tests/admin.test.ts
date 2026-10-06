@@ -32,7 +32,7 @@ const profile = (href = "catalog.json") => ({ profile: { uuid: randomUUID(), met
 function fixture() {
   const repo = new MemoryRepository(), store = new MemoryAdmin();
   const release: any = { id: "release", demo: false, sources: [], components: [], profiles: [{ id: "profile", title: "Example", resolved: catalog() }] };
-  const service = new Service(repo, { active: async () => release, get: async () => release }, store);
+  const service = new Service(repo, { active: async () => release, get: async () => release }, store, undefined, { rawBrowser:true, permanentDelete:true });
   return { repo, store, service };
 }
 async function denied(p: Promise<any>, status: number) { await assert.rejects(p, (e: any) => e.status === status); }
@@ -49,14 +49,14 @@ test("all administration endpoints require AppAdmin, not owner or Security", asy
 test("permanent deletion checks tenant, explicit confirmation and version, then removes all SSP records", async () => {
   const { service, repo, store } = fixture();
   const s = await service.request(ordinary, "POST", "ssps", { releaseId: "release", profileId: "profile", systemName: "Disposable" });
-  assert.equal((await service.request(admin, "GET", "ssps")).length, 1);
+  assert.equal((await service.request(admin, "GET", "ssps")).items.length, 1);
   await denied(service.request({ ...admin, tid: "other" }, "POST", "admin/raw", { container: "ssps", partition: s.sspId }), 404);
   await denied(service.request({ ...admin, tid: "other" }, "DELETE", "admin/ssps/" + s.sspId, { confirm: s.sspId, version: 1 }), 404);
   await denied(service.request(admin, "DELETE", "admin/ssps/" + s.sspId, { confirm: "wrong", version: 1 }), 409);
   await denied(service.request(admin, "DELETE", "admin/ssps/" + s.sspId, { confirm: s.sspId, version: 0 }), 409);
   await service.request(admin, "DELETE", "admin/ssps/" + s.sspId, { confirm: s.sspId, version: 1 });
   assert.equal(await repo.get(s.sspId), undefined);
-  assert.deepEqual(await repo.records(s.sspId, ""), []);
+  assert.deepEqual((await repo.records(s.sspId, "")).items, []);
   assert.equal(store.events.at(-1)?.operation, "ssp-deleted");
 });
 test("library upload validates models, rejects overwrite, resolves references and protects dependencies", async () => {

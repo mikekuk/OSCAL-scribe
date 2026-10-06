@@ -22,7 +22,7 @@ const service = new Service(repo, {
     if (id !== release.id) throw new ApiError(404, "Release not found");
     return release;
   },
-}, new MemoryAdminStore(repo, release), demoDirectory);
+}, new MemoryAdminStore(repo, release), demoDirectory, {rawBrowser:true, permanentDelete:true});
 const user = {
   oid: "11111111-1111-4111-8111-111111111111",
   tid: "22222222-2222-4222-8222-222222222222",

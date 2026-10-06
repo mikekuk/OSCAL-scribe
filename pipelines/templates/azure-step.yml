@@ -1,6 +1,10 @@
 parameters:
 - name: serviceConnection
   type: string
+- name: role
+  type: string
+  default: infrastructure
+  values: [infrastructure, deployment, publisher]
 - name: configFile
   type: string
 - name: script
@@ -19,7 +23,7 @@ steps:
   displayName: ${{ parameters.displayName }}
   inputs:
     workingDirectory: ${{ parameters.workingDirectory }}
-    azureSubscription: ${{ parameters.serviceConnection }}
+    azureSubscription: ${{ coalesce(parameters.serviceConnection, iif(eq(parameters.configFile, 'config/dev.json'), format('oscal-scribe-dev-{0}', parameters.role), 'oscal-scribe-azure')) }}
     scriptType: bash
     scriptLocation: inlineScript
     addSpnToEnvironment: true
@@ -27,6 +31,7 @@ steps:
     inlineScript: |
       set -euo pipefail
       source scripts/ci/identity.sh
+      node scripts/ci/preflight.mjs ${{ parameters.role }}
       ${{ parameters.script }}
   env:
     SCRIBE_ENVIRONMENT_JSON: $(scribeEnvironment)

@@ -1,3 +1,4 @@
+import {artifactHashes} from './artifact-integrity.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 rmSync('work/application',{recursive:true,force:true});
@@ -11,4 +12,4 @@ const pkg=JSON.parse(readFileSync('work/api-package/package.json','utf8')); pkg.
 writeFileSync('work/api-package/package.json',JSON.stringify(pkg));
 execFileSync('npm',['ci','--omit=dev','--ignore-scripts'],{cwd:'work/api-package',stdio:'inherit'});
 execFileSync('zip',['-qr','../application/api.zip','.'],{cwd:'work/api-package',stdio:'inherit'});
-writeFileSync('work/application/provenance.json',JSON.stringify({commit:process.env.BUILD_SOURCEVERSION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),node:process.version}));
+writeFileSync('work/application/provenance.json',JSON.stringify({commit:process.env.BUILD_SOURCEVERSION || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),node:process.version,hashes:artifactHashes('work/application')}));
