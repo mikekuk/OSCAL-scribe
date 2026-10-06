@@ -23,7 +23,7 @@ steps:
     set -euo pipefail
     npm run demo:prepare
     OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
-  displayName: Build separate SP800-53 Low and Moderate demo release
+  displayName: Build the separate seven-control SOC demo release
 - publish: work/content-release.json
   artifact: demo-release
 - template: templates/azure-step.yml
@@ -34,6 +34,7 @@ steps:
     displayName: Publish demo content to the selected test environment
     script: |
       node --input-type=module -e "import{loadConfig}from'./scripts/ci/config.mjs';if(!loadConfig().allow_demo)throw Error('Demo publication is disabled in this environment')"
-      export COSMOS_ENDPOINT=$(node scripts/ci/publisher-target.mjs)
+      COSMOS_ENDPOINT=$(node scripts/ci/publisher-target.mjs)
+      export COSMOS_ENDPOINT
       export ALLOW_DEMO_PUBLICATION=true
       npm run content:publish

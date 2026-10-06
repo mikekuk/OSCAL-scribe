@@ -79,5 +79,6 @@ steps:
     workingDirectory: $(Pipeline.Workspace)/s/scribe
     displayName: Publish approved controlled content
     script: |
-      export COSMOS_ENDPOINT=$(node scripts/ci/publisher-target.mjs)
+      COSMOS_ENDPOINT=$(node scripts/ci/publisher-target.mjs)
+      export COSMOS_ENDPOINT
       npm run content:publish

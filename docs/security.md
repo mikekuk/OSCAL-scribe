@@ -1,7 +1,10 @@
 # Security architecture, controls and operating requirements
 
 **Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
-This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+This is the original hardening snapshot. Subsequent deployment corrections are tracked in
+[PR #15](https://github.com/mikekuk/OSCAL-scribe/pull/15), including storage provisioning through ARM and publisher
+endpoint validation. Use the exact deployed commit and its version of this document for review; the original snapshot
+does not include those corrections.
 
 ## Status, scope and review baseline
 
@@ -186,6 +189,13 @@ are not revoked by creating these narrow roles: operators must reconcile them. T
 `Application.ReadWrite.OwnedBy`, `Application.Read.All` and `AppRoleAssignment.ReadWrite.All` include directory-wide
 capabilities and require tenant-admin consent/review. Resource-group scope does not constrain Graph permissions.
 
+The infrastructure service principal needs **Contributor** plus **User Access Administrator** on the application
+resource group, or an approved custom equivalent that permits role definitions, assignments and deletion locks.
+Role Based Access Control Administrator alone cannot create the custom Azure deployment role. These privileges can
+change access within the group and must remain restricted to protected infrastructure runs. They are distinct from
+bootstrap's temporary broad permissions on the state group, removable only after successful bootstrap and verification
+of the container-scoped state data role. See [deployment setup](deployment.md#one-time-setup).
+
 Cosmos local authentication and storage shared keys are disabled; storage disallows anonymous nested blob access.
 TLS minimums and HTTPS are explicit. FTP and web-deploy basic authentication are disabled. The API uses
 `ManagedIdentityCredential`; the publisher uses `AzureCliCredential` after pipeline identity checks so an agent VM's
@@ -198,8 +208,15 @@ connectivity instructions. Peered agents also need correct DNS forwarding/links.
 allowlist, private API gateway or private state network is provisioned implicitly.
 
 Storage firewall trusted-service bypass stays `None`; private endpoint clients do not require that broader exception.
-Infrastructure resource creation uses ARM, allowing the first infra-only run on a hosted agent. Private package upload
-and content publication then require an approved network-connected agent. Validate DNS, route behaviour and role
+Infrastructure resource creation uses ARM, allowing the first infra-only run on a hosted agent.
+Specifically, the locked AzureRM 4.81.0 provider uses `features.storage.data_plane_available = false` to avoid account
+availability probes that otherwise try shared-key data access. Blob versioning and retention still use ARM; the package
+container uses `storage_account_id` for ARM management. `storage_use_azuread = true` selects Entra authentication for
+supported provider data operations. This account feature does not eliminate network/RBAC requirements for other
+storage resources or real package uploads. Do not add queue properties/static-website configuration or new data-plane
+resources without reviewing provider behaviour and agent reachability. Shared keys stay disabled in both profiles.
+Local validation and mocked plans check configuration and wiring, not live Azure permission propagation or networking.
+Private package upload and content publication then require an approved network-connected agent. Validate DNS, route behaviour and role
 propagation before treating a successful Terraform apply as a working application.
 
 ## Administration, controlled content and audit evidence
@@ -287,7 +304,9 @@ pipeline tasks and agents. Do not run untrusted PR builds on the private privile
 Branch control, independent approvals, exclusive locks, service-connection/variable-group permissions and restrictions
 on who can edit them are protected-resource setup requirements in [deployment](deployment.md). Editable YAML alone
 cannot enforce them against a privileged pipeline administrator. Content publication is manual and should have its
-own approved-connection checks and exclusive lock.
+own approved-connection checks and exclusive lock. Discovery must find exactly one Cosmos account in the selected
+application resource group and a valid HTTPS endpoint; zero or multiple matches fail closed. Both publication
+pipelines stop on discovery failure, and the publisher refuses an empty endpoint before reading or writing content.
 
 ### Dependencies and verification gates
 

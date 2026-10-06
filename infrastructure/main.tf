@@ -7,7 +7,14 @@ terraform {
   }
 }
 provider "azurerm" {
-  features {}
+  features {
+    storage {
+      # Hosted infrastructure agents cannot reach dev private data endpoints.
+      # Manage accounts/blob properties via ARM; do not poll with shared keys.
+      data_plane_available = false
+    }
+  }
+  storage_use_azuread             = true
   resource_provider_registrations = "none"
   subscription_id                 = var.subscription_id
   tenant_id                       = var.tenant_id

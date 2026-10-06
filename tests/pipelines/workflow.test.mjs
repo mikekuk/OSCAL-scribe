@@ -73,3 +73,17 @@ test('work deployment keeps infra and code under one environment lock with separ
  assert.equal(content.parameters.find(p=>p.name==='contentSource').default,'nist-reference');
  assert.equal(content.steps.find(s=>s.template==='templates/azure-step.yml').parameters.role,'publisher');
 });
+
+// Guard the provider boundary missed by mock Terraform plans: hosted infra cannot
+// poll private storage endpoints or depend on shared keys disabled by the module.
+test('storage provisioning uses ARM while shared keys remain disabled',()=>{
+ const provider=readFileSync('infrastructure/main.tf','utf8');
+ assert.match(provider,/features\s*\{\s*storage\s*\{[^}]*data_plane_available\s*=\s*false/s);
+ assert.match(provider,/storage_use_azuread\s*=\s*true/);
+ const resources=readFileSync('infrastructure/functions.tf','utf8');
+ assert.equal((resources.match(/shared_access_key_enabled\s*=\s*false/g)||[]).length,2);
+ const container=resources.match(/resource "azurerm_storage_container" "packages"\s*\{([^}]+)\}/s)[1];
+ assert.match(container,/storage_account_id\s*=\s*azurerm_storage_account.packages.id/);
+ assert.doesNotMatch(container,/storage_account_name\s*=/);
+ assert.doesNotMatch(resources,/^\s*(queue_properties|static_website)\s*\{/m);
+});

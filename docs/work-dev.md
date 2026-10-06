@@ -60,15 +60,19 @@ pool **before** disabling state public reachability. The supplied dev profile do
 1. Have administrators create separate application and state resource groups in the approved work subscription.
 2. Create the three workload-identity-federated service connections and record their **service principal object IDs**
    (not client/application IDs) in a protected copy of `config/dev.json`. Use work identities only.
-3. Give only the infrastructure connection application-resource-group Contributor plus the necessary scoped
-   role/role-definition management and `Microsoft.Authorization/locks/read`, `locks/write`, `locks/delete` permissions. It manages Entra application ownership and assignments;
+3. Give only the infrastructure connection **Contributor** plus **User Access Administrator** on the application
+   resource group, or a company-approved equivalent with role-definition, role-assignment and lock read/write/delete
+   permissions. Role Based Access Control Administrator alone cannot create the custom deployment role.
+   Keep these app-group permissions available for infrastructure maintenance. This identity also manages Entra
+   application ownership and assignments;
    its Graph application permissions are `Application.ReadWrite.OwnedBy`, `Application.Read.All` and
    `AppRoleAssignment.ReadWrite.All`, with tenant administrator consent. The last grant is directory-wide:
    a resource-group boundary does not constrain it. Restrict this identity and its pipeline especially tightly.
-4. Bootstrap temporarily needs Contributor and scoped role-assignment management on the state group,
-   including permission to create its deletion lock. Remove those broad state-group grants after bootstrap;
-   retain the generated container-scoped state data access. Terraform requires role-definition administration
-   in the app group for the custom deployment and create-only Cosmos audit roles.
+4. Bootstrap temporarily needs **Contributor** plus **User Access Administrator** (or an approved equivalent) on the
+   state group, including permission to create its deletion lock. Remove those broad state-group grants only after
+   successful bootstrap and verification of the container-scoped state role;
+   retain the generated container-scoped state data access. Terraform requires Azure RBAC role-definition administration
+   in the app group for the custom deployment role. Cosmos SQL audit roles use separate DocumentDB management actions.
 5. The **deployment** identity receives only the custom code-deployment role and package-container blob access
    from Terraform. Do not grant it application ownership, Graph writes, infrastructure Contributor or state access.
    The **publisher** receives Cosmos content-container write access plus app-group Reader for endpoint discovery;
@@ -84,7 +88,10 @@ pool **before** disabling state public reachability. The supplied dev profile do
 
 Run the main pipeline with `deploy: true`, `deployApplication: false`, `configFile: config/dev.json` first.
 The build, plan and infrastructure apply run on hosted Linux agents using ARM and the public Entra-only state backend.
-This creates the VNet and private endpoints before a network-connected deployment agent is needed.
+The pinned AzureRM provider sets `features.storage.data_plane_available = false`, so storage account creation and
+blob-property management do not probe private data endpoints. The package container also uses its ARM resource ID.
+This creates the VNet and private endpoints before a network-connected deployment agent is needed. New storage
+resources that require data-plane access must be reviewed before adding them to this hosted infrastructure job.
 
 Then attach an **approved Linux Azure Pipelines agent** to `scribe-dev-agents`. Use the created agent subnet or
 an approved peered network. Provision agent compute through the company's agent platform; this repository creates
