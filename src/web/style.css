@@ -84,3 +84,7 @@ button.danger { background: #823c36; color: white; }
 .person-results { display:flex; flex-direction:column; gap:.4rem; max-height:20rem; overflow:auto; }
 .person-results button { text-align:left; overflow-wrap:anywhere; }
 .revision details, .metadata-grid details { font-size:.8rem; }
+#ssp-help { max-width:720px; max-height:85vh; overflow:auto; border:1px solid #c5d1c6; border-radius:10px; padding:28px; color:inherit; }
+#ssp-help::backdrop { background:#13271f66; }
+#ssp-help li { margin-bottom:.8rem; }
+#ssp-preview { white-space:pre-wrap; overflow-wrap:anywhere; margin-top:1rem; }

@@ -3,7 +3,7 @@ type Api = (path: string, method?: string, body?: any) => Promise<any>;
 const pageSize = 25;
 /** Each workspace has its own filters and page history. SSPs and storage pages
  * are loaded on demand; the bounded library registry contains metadata only. */
-export async function showAdmin(api: Api, layout: (html: string) => void, run: (fn: () => Promise<any>) => any, download: (name: string, doc: any) => void, actions: { open: (id: string) => Promise<void>; create: () => Promise<void> }) {
+export async function showAdmin(api: Api, layout: (html: string) => void, run: (fn: () => Promise<any>) => any, download: (name: string, doc: any) => void, actions: { open: (id: string) => Promise<void>; create: () => Promise<void>; upload: () => Promise<void> }) {
   let view = "Plans", planQuery = "", libraryQuery = "", state = "all", model = "", libraryPage = 0;
   let planPages: (string | undefined)[] = [undefined], partitionPages: (string | undefined)[] = [undefined], recordPages: (string | undefined)[] = [undefined];
   let planResult: any = { items: [] }, partitionResult: any = { items: [] }, records: any = { items: [] }, library: any;
@@ -45,7 +45,7 @@ export async function showAdmin(api: Api, layout: (html: string) => void, run: (
   function render() {
     let content = "";
     if (view === "Plans") {
-      content = `<div class="component-heading"><h2>System security plans</h2><button id="admin-new-plan">Create plan</button></div><p>Search across plans by title or ID. Permanent deletion removes all revisions, attestations and per-plan audit records.</p>
+      content = `<div class="component-heading"><h2>System security plans</h2><div class="inline"><button id="admin-upload-ssp" class="quiet">Upload SSP</button><button id="admin-new-plan">Create plan</button></div></div><p>Search across plans by title or ID. Permanent deletion removes all revisions, attestations and per-plan audit records.</p>
         <form id="plan-filter" class="admin-filters"><label class="field">Search plans<input id="plan-query" type="search" value="${h(planQuery)}" placeholder="Title or SSP ID"></label><label class="field">Plan state<select id="plan-state">${["all", "active", "archived", "deleting"].map(s => `<option value="${s}"${checked(s,state)}>${h(s)}</option>`).join("")}</select></label><button>Search</button></form>
         <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Plan</th><th>Status</th><th>Actions</th></tr></thead><tbody>${planResult.items.map((s: any) => `<tr><td><strong>${h(s.title)}</strong><small>${h(s.sspId)} · v${s.version}</small></td><td>${s.deleting ? "Deletion in progress" : s.archived ? "Archived" : "Active"}</td><td>${!s.deleting ? `<button class="quiet" data-open-plan="${h(s.sspId)}">Open plan</button>` : ""}<button class="quiet" data-browse-ssp="${h(s.sspId)}">Explore records</button><button class="danger" data-purge="${h(s.sspId)}">${s.deleting ? "Retry deletion" : "Permanently delete"}</button></td></tr>`).join("") || '<tr><td colspan="3">No matching plans on this page.</td></tr>'}</tbody></table></div>${pager("plans",planPages.length-1,!!planResult.cursor)}`;
     } else if (view === "Content library") {
@@ -79,6 +79,7 @@ export async function showAdmin(api: Api, layout: (html: string) => void, run: (
     document.querySelectorAll<HTMLButtonElement>("[data-partition]").forEach(b=>b.onclick=()=>run(async()=>{container="content";partition=b.dataset.partition!;recordQuery="";recordPages=[undefined];await loadRecords();render();}));
     document.querySelectorAll<HTMLButtonElement>("[data-inspect-record]").forEach(b=>b.onclick=()=>inspect(records.items[Number(b.dataset.inspectRecord)].id||"record",records.items[Number(b.dataset.inspectRecord)]));
     bind("admin-new-plan", actions.create);
+    bind("admin-upload-ssp", actions.upload);
     document.querySelectorAll<HTMLButtonElement>("[data-open-plan]").forEach(b=>b.onclick=()=>run(()=>actions.open(b.dataset.openPlan!)));
     document.querySelectorAll<HTMLButtonElement>("[data-browse-ssp]").forEach(b=>b.onclick=()=>run(async()=>{container="ssps";partition=b.dataset.browseSsp!;recordQuery="";recordPages=[undefined];await loadRecords();await selectView("Raw storage");}));
     document.querySelectorAll<HTMLButtonElement>("[data-purge]").forEach(b=>b.onclick=()=>run(async()=>{
