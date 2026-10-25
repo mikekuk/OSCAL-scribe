@@ -13,16 +13,16 @@ function point(axis: number, level: number): string {
 }
 export function informationRadar(types: Json[]): string {
   const plotted = types.filter(type => impactAxes.every(axis => impactLevel(type, axis)));
-  return `<figure class="information-radar"><svg viewBox="0 0 360 310" role="img" aria-labelledby="cia-chart-title cia-chart-description">
-    <title id="cia-chart-title">Information type CIA levels</title><desc id="cia-chart-description">Three axes: Confidentiality, Integrity and Availability. Five rings from centre to edge: Negligible, Low, Moderate, High and Critical. Each selected information type has a plot; the legend lists its exact levels.</desc>
+  return `<figure class="information-radar"><svg viewBox="0 0 360 310" role="img" aria-label="Information type CIA levels" aria-describedby="cia-chart-description">
+    <desc id="cia-chart-description">Three axes: Confidentiality, Integrity and Availability. Five rings from centre to edge: Negligible, Low, Moderate, High and Critical. Each selected information type has a plot; the legend lists its exact levels.</desc>
     ${impactLevels.map((_, index) => index + 1).map(level => `<polygon points="${impactAxes.map((_, i) => point(i, level)).join(" ")}" class="radar-grid"/><text x="185" y="${170 - level * radiusStep + 14}" class="radar-scale">${impactLevels[level - 1]}</text>`).join("")}
     ${impactAxes.map((_, i) => `<line x1="180" y1="170" x2="${point(i, impactLevels.length).split(",")[0]}" y2="${point(i, impactLevels.length).split(",")[1]}" class="radar-grid"/>`).join("")}
     <text x="180" y="23" text-anchor="middle">C</text><text x="306" y="255" text-anchor="middle">I</text><text x="54" y="255" text-anchor="middle">A</text>
     ${plotted.map(type => {
       const index = types.indexOf(type), color = colours[index % colours.length];
-      return `<g tabindex="0" aria-label="${h(tooltip(type))}" class="radar-plot"><title>${h(tooltip(type))}</title><polygon points="${impactAxes.map((axis, i) => point(i, impactLevels.indexOf(impactLevel(type, axis)!) + 1)).join(" ")}" fill="${color}" fill-opacity="0.08" stroke="${color}" stroke-width="2.5" ${index % 2 ? 'stroke-dasharray="6 4"' : ""}/>${impactAxes.map((axis, i) => { const [x, y] = point(i, impactLevels.indexOf(impactLevel(type, axis)!) + 1).split(","); return `<circle cx="${x}" cy="${y}" r="4" fill="${color}"/>`; }).join("")}</g>`;
+      return `<g tabindex="0" aria-label="${h(tooltip(type))}" class="radar-plot" data-information-tooltip="${h(tooltip(type))}"><polygon points="${impactAxes.map((axis, i) => point(i, impactLevels.indexOf(impactLevel(type, axis)!) + 1)).join(" ")}" fill="${color}" fill-opacity="0.08" stroke="${color}" stroke-width="2.5" ${index % 2 ? 'stroke-dasharray="6 4"' : ""}/>${impactAxes.map((axis, i) => { const [x, y] = point(i, impactLevels.indexOf(impactLevel(type, axis)!) + 1).split(","); return `<circle cx="${x}" cy="${y}" r="4" fill="${color}"/>`; }).join("")}</g>`;
     }).join("")}</svg><figcaption>C = Confidentiality · I = Integrity · A = Availability<br>Negligible → Low → Moderate → High → Critical from centre to edge. Identical levels overlap.</figcaption>
-    <ul class="radar-legend">${types.map((type, i) => `<li tabindex="0" title="${h(tooltip(type))}"><span class="radar-key radar-colour-${i % colours.length}"></span><span><strong>${h(type.title)}</strong><br>${h(summary(type))}</span><span class="information-tooltip">${h(tooltip(type))}</span></li>`).join("")}</ul>${plotted.length < types.length ? '<p>Types with unspecified or unsupported impact levels cannot be plotted. Their saved values are retained.</p>' : ""}</figure>`;
+    <ul class="radar-legend">${types.map((type, i) => `<li tabindex="0" aria-label="${h(tooltip(type))}" data-information-tooltip="${h(tooltip(type))}"><span class="radar-key radar-colour-${i % colours.length}"></span><span><strong>${h(type.title)}</strong><br>${h(summary(type))}</span></li>`).join("")}</ul>${plotted.length < types.length ? '<p>Types with unspecified or unsupported impact levels cannot be plotted. Their saved values are retained.</p>' : ""}</figure>`;
 }
 export function impactScaleHelp(): string {
   return `<details class="impact-scale"><summary>About the five impact levels</summary><p>Low, Moderate and High use <a href="https://csrc.nist.gov/pubs/fips/199/final" target="_blank" rel="noopener noreferrer">FIPS 199</a>. Negligible and Critical are organisation-defined extensions.</p><dl>${impactLevels.map(level => `<dt>${level[0].toUpperCase() + level.slice(1)}</dt><dd>${h(impactDescriptions[level])}</dd>`).join("")}</dl></details>`;
@@ -36,15 +36,55 @@ export function informationTypesView(characteristics: Json, catalog: Information
     }),
     ...selected.flatMap((type, index) => catalog.entries.some(entry => entry.id === catalogId(type)) ? [] : [{ key: "saved:" + index, type, checked: true, note: "Saved in this plan" }]),
   ];
-  return `<section class="information-section"><h3>System information</h3><p>Select every information type your system stores, processes or transmits. Hover or focus a type for its description and CIA levels.</p>
-    <div class="information-layout"><details class="information-picker" data-expand-key="information-type-picker" ${pickerOpen ? "open" : ""}><summary>${selected.length} information ${selected.length === 1 ? "type" : "types"} selected<span>Choose information types</span></summary><fieldset class="information-options"><legend>Information types — select all that apply</legend>${options.map(option => `<label class="information-option" title="${h(tooltip(option.type))}"><input type="checkbox" aria-label="${h(option.type.title)}" data-information-type="${h(option.key)}" ${option.checked ? "checked" : ""} ${disabled}><span><strong>${h(option.type.title)}</strong><small>${h(summary(option.type))}${option.note ? " · " + h(option.note) : ""}</small></span><span class="information-tooltip">${h(tooltip(option.type))}</span></label>`).join("") || '<p>No types are available. Ask an administrator to create one.</p>'}</fieldset></details>${informationRadar(selected)}</div>
+  return `<section class="information-section"><h3>System information</h3><p>Select every information type your system stores, processes or transmits. Hover over a type for three seconds to see its description and CIA levels. Keyboard focus also shows these details after three seconds.</p>
+    <div class="information-layout"><details class="information-picker" data-expand-key="information-type-picker" ${pickerOpen ? "open" : ""}><summary>${selected.length} information ${selected.length === 1 ? "type" : "types"} selected<span>Choose information types</span></summary><fieldset class="information-options"><legend>Information types — select all that apply</legend>${options.map(option => `<label class="information-option" data-information-tooltip="${h(tooltip(option.type))}"><input type="checkbox" aria-label="${h(tooltip(option.type))}" data-information-type="${h(option.key)}" ${option.checked ? "checked" : ""} ${disabled}><span><strong>${h(option.type.title)}</strong><small>${h(summary(option.type))}${option.note ? " · " + h(option.note) : ""}</small></span></label>`).join("") || '<p>No types are available. Ask an administrator to create one.</p>'}</fieldset></details>${informationRadar(selected)}</div>
     <p class="legend">Selections keep the name, description and levels saved with this plan. To adopt an administrator’s updated definition, remove it and select it again.</p></section>
     <section class="information-section"><h3>Security objectives</h3><p>Each objective defaults to the highest level among the selected information types. You can override each objective separately.</p>${impactScaleHelp()}<div class="form-grid">${impactAxes.map(axis => {
       const value = characteristics["security-impact-level"]?.["security-objective-" + axis] || "";
       return `<div><label class="field">${axisLabels[axis]} objective<select aria-label="${axisLabels[axis]} objective" data-objective="${axis}" ${disabled}>${(!impactLevels.includes(value) ? [`<option value="${h(value)}" selected>${h(value || "Unspecified")}</option>`] : []).join("")}${impactLevels.map(level => `<option title="${h(impactDescriptions[level])}" value="${level}" ${value === level ? "selected" : ""}>${level}</option>`).join("")}</select><small>Selected maximum: ${maximum[axis] || "unspecified"} · ${isObjectiveOverride(characteristics, axis) ? "Manual override" : "Automatic"}</small></label><button class="quiet" data-objective-reset="${axis}" ${disabled || (!maximum[axis] ? "disabled" : "")}>Use selected maximum</button></div>`;
     }).join("")}</div>${belowMaximumWarnings(characteristics).map(w => `<p class="objective-warning">${h(w)}</p>`).join("")}</section>`;
 }
+let dismissInformationTooltip = () => {};
+function bindInformationTooltips() {
+  dismissInformationTooltip();
+  const section = document.querySelector<HTMLElement>(".information-section");
+  if (!section) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let popup: HTMLElement | undefined;
+  const hide = () => {
+    clearTimeout(timer);
+    popup?.remove();
+    popup = undefined;
+  };
+  const lifecycle = new AbortController();
+  dismissInformationTooltip = () => { hide(); lifecycle.abort(); };
+  const showAfterDelay = (target: Element) => {
+    hide();
+    timer = setTimeout(() => {
+      if (!target.isConnected) return;
+      popup = document.createElement("div");
+      popup.className = "information-tooltip";
+      popup.setAttribute("role", "tooltip");
+      popup.textContent = target.getAttribute("data-information-tooltip");
+      section.append(popup);
+      const anchor = target.getBoundingClientRect(), bounds = popup.getBoundingClientRect();
+      popup.style.left = `${Math.max(8, Math.min(anchor.left, window.innerWidth - bounds.width - 8))}px`;
+      popup.style.top = `${Math.max(8, anchor.bottom + bounds.height + 8 <= window.innerHeight ? anchor.bottom + 8 : anchor.top - bounds.height - 8)}px`;
+    }, 3000);
+  };
+  section.querySelectorAll<HTMLElement | SVGElement>("[data-information-tooltip]").forEach(target => {
+    target.onpointerenter = event => { if (event.pointerType !== "touch") showAfterDelay(target); };
+    target.onpointerleave = hide;
+    target.addEventListener("focusin", event => { if (event.target instanceof Element && event.target.matches(":focus-visible")) showAfterDelay(target); });
+    target.addEventListener("focusout", hide);
+  });
+  window.addEventListener("scroll", hide, { capture: true, signal: lifecycle.signal });
+  window.addEventListener("resize", hide, { signal: lifecycle.signal });
+  section.addEventListener("pointerdown", hide);
+  section.addEventListener("keydown", event => { if (event.key === "Escape") hide(); });
+}
 export function bindInformationTypes(characteristics: Json, catalog: InformationTypeCatalog, editable: boolean, changed: () => void) {
+  bindInformationTooltips();
   const commit = (draft: Json) => {
     const warnings = belowMaximumWarnings(draft);
     if (warnings.length && !confirm("Security objectives are below the selected information types’ maximum levels:\n\n" + warnings.join("\n") + "\n\nDo you want to confirm these lower levels?")) return false;
