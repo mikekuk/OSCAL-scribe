@@ -8,6 +8,7 @@ await writeFile(
     type: "module",
     main: "functions.js",
     dependencies: p.dependencies,
+    overrides: p.overrides,
   }),
 );
 await writeFile(

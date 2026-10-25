@@ -1,3 +1,5 @@
+import { informationTypesView, bindInformationTypes } from "./information-types-view";
+import { impactLevels, type InformationTypeCatalog } from "../shared/information-types";
 import { showSspUpload } from "./ssp-upload";
 import { mountPeoplePicker, personLabel } from "./people-picker";
 import type { Person } from "../shared/types";
@@ -13,6 +15,7 @@ import { addRole, removeRole, effectiveRequirement, requirement, ensureStatement
 import { filterControls, renderControlCards } from "./control-view";
 import "./style.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
+let informationTypes: InformationTypeCatalog = { entries: [], version: 0 };
 let identities = new Map<string, Person>();
 let selectedSharePerson: () => Person | undefined = () => undefined;
 const livePerson = (oid: string) => `<div data-live-person="${h(oid)}">${personLabel(oid, identities.get(oid))}</div>`;
@@ -75,6 +78,7 @@ let sessionGeneration = 0;
 function clearSession() {
   sessionGeneration++;
   current = undefined; list = []; history = []; baseline = undefined; approved = undefined;
+  informationTypes = { entries: [], version: 0 };
   identities.clear(); rowCache = undefined; selectedControls.clear(); openCards.clear(); dirty = false;
   planPages = [undefined]; revisionPages = [undefined]; planNext = undefined; revisionNext = undefined;
   errors = []; selectedSharePerson = () => undefined;
@@ -232,7 +236,7 @@ function renderHome() {
 async function open(id: string) {
   current = await api("ssps/" + id);
   identities = new Map();
-  baseline = await api(`content/${current!.releaseId}/${current!.profileId}`);
+  [baseline, informationTypes] = await Promise.all([api(`content/${current!.releaseId}/${current!.profileId}`), api("information-types")]);
   rowCache = undefined;
   controlQuery = "";
   controlGroup = "";
@@ -306,6 +310,8 @@ function render() {
             ? []
             : {};
         node[parts.at(-1)!] = e.value;
+        if (e.dataset.path === "system-characteristics/data-flow/description" && !e.value.trim()
+          && Object.keys(b["system-characteristics"]["data-flow"]).length === 1) delete b["system-characteristics"]["data-flow"];
         mark();
       }),
     );
@@ -330,7 +336,7 @@ function section(): string {
         return `<section class="role-card"><div class="role-heading"><label class="field">Role name<input data-role-title="${h(id)}" value="${h(role.title)}" maxlength="120" ${editable() ? "" : "disabled"}></label><button class="role-remove quiet" data-remove-role="${h(id)}" aria-label="Delete ${h(role.title)} role" title="Delete role" ${editable() ? "" : "disabled"}>×</button></div><div class="form-grid"><label class="field">Full name<input data-person="${h(id)}" data-kind="name" value="${h(party?.name || "")}" ${editable() ? "" : "disabled"}></label><label class="field">Email<input type="email" data-person="${h(id)}" data-kind="email" value="${h(party?.["email-addresses"]?.[0] || "")}" ${editable() ? "" : "disabled"}></label></div></section>`;
       }).join("")}${b.metadata.roles?.length ? "" : "<p>No roles yet. Add a role and assign a person before attestation.</p>"}`;
   if (tab === "System Characteristics")
-    return `<div class="form-grid">${field("Security sensitivity", "system-characteristics/security-sensitivity-level", "select", ["low", "moderate", "high"])}${["confidentiality", "integrity", "availability"].map((k) => field(k + " objective", `system-characteristics/security-impact-level/security-objective-${k}`, "select", ["low", "moderate", "high"])).join("")}${field("Authorization boundary", "system-characteristics/authorization-boundary/description", "textarea")}${field("Information type", "system-characteristics/system-information/information-types/0/title")}${field("Information description", "system-characteristics/system-information/information-types/0/description", "textarea")}${["confidentiality", "integrity", "availability"].map((k) => field("Information " + k, `system-characteristics/system-information/information-types/0/${k}-impact/base`, "select", ["low", "moderate", "high"])).join("")}</div>`;
+    return `${informationTypesView(b["system-characteristics"], informationTypes, !!editable(), openCards.has("information-type-picker"))}<div class="form-grid">${field("Security sensitivity", "system-characteristics/security-sensitivity-level", "select", [...impactLevels])}${field("Authorization boundary", "system-characteristics/authorization-boundary/description", "textarea")}</div><section class="information-section"><h3>Data flows</h3><p>Describe how information enters, moves through and leaves the system, including sources, destinations and external connections.</p>${field("Data flows description", "system-characteristics/data-flow/description", "textarea")}</section>`;
   if (tab === "Components") return components();
   if (tab === "Controls / Implementation") return controls();
   if (tab === "Attestation & History")
@@ -391,6 +397,7 @@ function applyControlFilter() {
   if (empty) empty.hidden = matches.size > 0;
 }
 function bind() {
+  bindInformationTypes(body()["system-characteristics"], informationTypes, !!editable(), () => { mark(); render(); });
   document.querySelectorAll<HTMLInputElement>("[data-person]").forEach(
     (e) =>
       (e.oninput = () => {

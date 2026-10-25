@@ -1,3 +1,5 @@
+import type { InformationTypeCatalog } from "../shared/information-types";
+import { informationTypeRequest } from "./information-types";
 import { safePolicy, type SecurityPolicy } from "./security";
 import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
@@ -9,6 +11,8 @@ export const MAX_UPLOAD = 20_000_000;
 export interface LibraryEntry { id: string; path: string; model: string; title: string; uuid: string; hash: string; bytes: number; references: string[]; componentImports?: string[]; actor: string; at: string }
 export interface Library { entries: LibraryEntry[]; version: number; _etag?: string }
 export interface AdminStore {
+  informationTypes(tenantId: string): Promise<InformationTypeCatalog>;
+  saveInformationTypes(tenantId: string, previous: InformationTypeCatalog, next: InformationTypeCatalog): Promise<void>;
   library(): Promise<Library>;
   saveLibrary(previous: Library, next: Library): Promise<void>;
   putAsset(id: string, doc: Json): Promise<void>;
@@ -85,6 +89,7 @@ export class AdminService {
     if (!user.roles.includes("AppAdmin")) throw new ApiError(403, "App Admin role required");
     if (method === "DELETE" && !this.policy.permanentDelete) throw new ApiError(403, "Permanent deletion is disabled in this environment");
     const log = (operation: string, target: string) => this.store.audit({ id: "admin-audit:" + randomUUID(), releaseId: "admin-audit", operation, target, actor: user.oid, tenantId: user.tid, at: new Date().toISOString() });
+    if (p[0] === "information-types") return informationTypeRequest(this.store, user, method, p, body, log);
     const query = body.query ?? "", cursor = body.cursor;
     if (typeof query !== "string" || query.length > 200 || (cursor !== undefined && (typeof cursor !== "string" || cursor.length > 16000))) throw new ApiError(400, "Invalid search or page cursor");
     if (p[0] === "ssps" && p.length === 1 && ["GET", "POST"].includes(method)) {

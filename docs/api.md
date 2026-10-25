@@ -53,3 +53,12 @@ Other requests retain their 1 MB limit; only authenticated AppAdmin library uplo
 Directory endpoints (same delegated Scribe authentication): `POST /ssps/{id}/people` with `{query}` requires sharing administration and returns up to 20 directory people; `POST /ssps/{id}/identities` with `{ids}` requires plan read access and resolves only existing participants (maximum 100 IDs). Sharing continues to accept `{oid, permission}`; read/edit grants now require a fresh target-tenant lookup. See [directory sharing](directory-sharing.md).
 
 SSP uploads: `POST /ssps/import/preview` and `POST /ssps/import`, each with `{oscal}`, are available to User, Security and AppAdmin. Preview validates without writing; import creates a new private copy against its original available release/profile. Existing SSPs are never replaced. See [SSP upload](ssp-upload.md) for formats, limits and retained content.
+
+### Information type catalogue
+
+- `GET /api/information-types`: authenticated User, Security or AppAdmin; returns the current tenant's `{ entries, version }` catalogue, including retired entries for displaying saved selections.
+- `GET /api/admin/information-types`: AppAdmin catalogue editor read.
+- `POST /api/admin/information-types`: AppAdmin creates a type. Body: `{ version, entry: { name, description, confidentiality, integrity, availability, active } }`.
+- `PUT /api/admin/information-types/{id}`: AppAdmin replaces that type's editable fields using the same body. The stable ID is retained. `active: false` retires it from new selections.
+
+CIA levels are `negligible`, `low`, `moderate`, `high` or `critical`, in that order. Low, Moderate and High are FIPS 199 levels; Negligible and Critical are custom extensions. Names (1–120 characters) are unique ignoring case; descriptions are 1–2,000 characters. Writes require the catalogue's current version, return the new catalogue/version, and return 409 on stale versions or concurrent ETag conflicts. The API derives tenant identity from authentication; catalogue writes cannot target another tenant. Selected definitions and per-axis objective modes are persisted as OSCAL content and namespaced properties in the normal SSP revision save flow.

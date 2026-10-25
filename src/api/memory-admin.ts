@@ -1,9 +1,16 @@
+import { emptyInformationTypeCatalog, type InformationTypeCatalog } from "../shared/information-types";
 // In-memory adapter for automated tests and the explicitly enabled loopback demo.
 import type { AdminStore, Library } from "./admin";
 import type { Json, Release } from "../shared/types";
 import type { MemoryRepository } from "./memory";
 import { ApiError } from "./service";
 export class MemoryAdminStore implements AdminStore {
+  catalogs = new Map<string, InformationTypeCatalog>();
+  async informationTypes(tenantId: string) { return structuredClone(this.catalogs.get(tenantId) || emptyInformationTypeCatalog()); }
+  async saveInformationTypes(tenantId: string, before: InformationTypeCatalog, after: InformationTypeCatalog) {
+    if (before.version !== (this.catalogs.get(tenantId)?.version || 0)) throw new ApiError(409, "Information types changed; reload and retry");
+    this.catalogs.set(tenantId, structuredClone(after));
+  }
   state: Library = { entries: [], version: 0 };
   docs = new Map<string, Json>();
   events: Json[] = [];

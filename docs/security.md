@@ -315,6 +315,14 @@ are pinned to commit IDs. Terraform, OSCAL CLI and Trivy versions/download diges
 fixed upstream revisions and SHA-256. Lens modules and official schemas retain their provenance. Update these pins
 through reviewed changes rather than silently consuming latest downloads.
 
+Azure Identity currently requires MSAL Node 6.x, which is affected by
+[GHSA-xcx6-jx8p-x3h5](https://github.com/advisories/GHSA-xcx6-jx8p-x3h5).
+A scoped npm override selects patched MSAL Node 7.1.0 for Azure Identity. The v7 breaking change concerns
+interactive browser authentication; this app uses managed identity and the publisher uses Azure CLI credentials.
+The managed-identity integration test exercises token acquisition through the installed Azure Identity/MSAL pair
+with a simulated Azure Functions identity endpoint. Remove the override when Azure Identity's supported dependency
+range includes a patched MSAL version, then rerun audit, authentication tests and packaging checks.
+
 CI runs application/security/Lens/pipeline tests, TypeScript and production builds, `npm audit --audit-level=moderate`,
 a repository secret scan, HIGH/CRITICAL Terraform checks, Terraform formatting/validation, mocked test/dev profile
 plans and deployment packaging. Secret scanning covers the current source tree, not a complete Git history audit.

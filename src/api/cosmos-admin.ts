@@ -1,3 +1,4 @@
+import { emptyInformationTypeCatalog, type InformationTypeCatalog } from "../shared/information-types";
 import type { Database } from "@azure/cosmos";
 import { ApiError } from "./service";
 import type { AdminStore, Library } from "./admin";
@@ -6,6 +7,20 @@ import type { Json } from "../shared/types";
 export class CosmosAdminStore implements AdminStore {
   constructor(private db: Database) {}
   private get content() { return this.db.container("staging"); }
+  async informationTypes(tenantId: string): Promise<InformationTypeCatalog> {
+    try {
+      const { resource } = await this.content.item("registry", "information-types:" + tenantId).read<InformationTypeCatalog>();
+      return resource || emptyInformationTypeCatalog();
+    } catch (e: any) { if (e.code === 404) return emptyInformationTypeCatalog(); throw e; }
+  }
+  async saveInformationTypes(tenantId: string, previous: InformationTypeCatalog, next: InformationTypeCatalog) {
+    const releaseId = "information-types:" + tenantId;
+    const resourceBody = { id: "registry", releaseId, entries: next.entries, version: next.version };
+    try {
+      if (previous._etag) await this.content.item("registry", releaseId).replace(resourceBody, { accessCondition: { type: "IfMatch", condition: previous._etag } });
+      else await this.content.items.create(resourceBody);
+    } catch (e: any) { if ([409, 412].includes(e.code)) throw new ApiError(409, "Information types changed; reload and retry"); throw e; }
+  }
   async library(): Promise<Library> {
     try {
       const { resource } = await this.content.item("registry", "library").read();
