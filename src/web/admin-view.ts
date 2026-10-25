@@ -1,9 +1,12 @@
+import { informationTypesAdminView } from "./information-types-admin";
+import { impactAxes, type InformationType, type InformationTypeCatalog } from "../shared/information-types";
 import { escapeHtml as h } from "../shared/lens/views.mjs";
 type Api = (path: string, method?: string, body?: any) => Promise<any>;
 const pageSize = 25;
 /** Each workspace has its own filters and page history. SSPs and storage pages
  * are loaded on demand; the bounded library registry contains metadata only. */
 export async function showAdmin(api: Api, layout: (html: string) => void, run: (fn: () => Promise<any>) => any, download: (name: string, doc: any) => void, actions: { open: (id: string) => Promise<void>; create: () => Promise<void>; upload: () => Promise<void> }) {
+  let informationTypes: InformationTypeCatalog = { entries: [], version: 0 }, editingInformationType: InformationType | undefined;
   let view = "Plans", planQuery = "", libraryQuery = "", state = "all", model = "", libraryPage = 0;
   let planPages: (string | undefined)[] = [undefined], partitionPages: (string | undefined)[] = [undefined], recordPages: (string | undefined)[] = [undefined];
   let planResult: any = { items: [] }, partitionResult: any = { items: [] }, records: any = { items: [] }, library: any;
@@ -40,6 +43,7 @@ export async function showAdmin(api: Api, layout: (html: string) => void, run: (
     view = next;
     if (view === "Plans") await loadPlans();
     else if (view === "Content library") await refreshLibrary();
+    else if (view === "Information types") { informationTypes = await api("admin/information-types"); editingInformationType = undefined; }
     else await loadPartitions();
     render();
   }
@@ -58,16 +62,34 @@ export async function showAdmin(api: Api, layout: (html: string) => void, run: (
         ${library.problems.length ? `<details><summary>${library.problems.length} reference issues — export blocked</summary>${library.problems.map((p: string) => `<p>${h(p)}</p>`).join("")}</details>` : '<p>All library references resolve.</p>'}
         <form id="library-filter" class="admin-filters"><label class="field">Search library<input id="library-query" type="search" value="${h(libraryQuery)}" placeholder="Title, path or UUID"></label><label class="field">Document type<select id="library-model">${["", "catalog", "profile", "component-definition"].map(m => `<option value="${m}"${checked(m,model)}>${h(m||"All types")}</option>`).join("")}</select></label><button>Search</button></form><p>${matches.length} matching files · ${library.entries.length} total · ${Math.round(library.entries.reduce((n: number,e: any)=>n+e.bytes,0)/1000)} KB</p>
         <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Document</th><th>Type / references</th><th>Actions</th></tr></thead><tbody>${visible.map((e: any) => `<tr><td><strong>${h(e.title)}</strong><small>${h(e.path)}</small></td><td>${h(e.model)}<small>${e.references.length} dependencies</small></td><td><button class="quiet" data-view-asset="${h(e.id)}">Inspect</button><button class="quiet" data-dependencies="${h(e.id)}">References</button><button class="danger" data-delete-asset="${h(e.id)}">Delete</button></td></tr>`).join("") || '<tr><td colspan="3">No matching library files.</td></tr>'}</tbody></table></div>${pager("library",libraryPage,libraryPage+1<pages)}`;
+    } else if (view === "Information types") {
+      content = informationTypesAdminView(informationTypes, editingInformationType);
     } else {
       content = `<h2>Raw storage explorer</h2><p>Read-only records from Scribe’s fixed containers. Select a partition, then inspect individual records.</p><div class="admin-storage">
         <aside><h3>Content partitions</h3><form id="partition-filter"><label class="field">Find partition<input id="partition-query" type="search" value="${h(partitionQuery)}" placeholder="Release ID or index…"></label><button class="quiet">Search</button></form><div class="admin-partitions">${partitionResult.items.map((p: string) => `<button class="quiet ${container==='content'&&partition===p?'selected':''}" data-partition="${h(p)}">${h(p)}</button>`).join("") || '<p>No matching partitions.</p>'}</div>${pager("partitions",partitionPages.length-1,!!partitionResult.cursor)}<p>SSP partitions are available from <button class="quiet" data-view="Plans">Plans</button>.</p></aside>
         <section class="admin-records"><h3>${partition ? h(container+" / "+partition) : "Choose a partition"}</h3>${partition ? `<form id="record-filter" class="admin-filters"><label class="field">Find record ID<input id="record-query" type="search" value="${h(recordQuery)}" placeholder="current, revision:, manifest…"></label><button class="quiet">Search</button></form><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Record ID</th><th>Kind</th><th>Action</th></tr></thead><tbody>${records.items.map((r: any,i: number) => `<tr><td>${h(r.id||"registry")}</td><td>${h(r.kind||r.operation||"document")}</td><td><button class="quiet" data-inspect-record="${i}">Inspect JSON</button></td></tr>`).join("") || '<tr><td colspan="3">No records on this page.</td></tr>'}</tbody></table></div>${pager("records",recordPages.length-1,!!records.cursor)}`:'<p>Select a content partition on the left, or open a plan’s records from Plans.</p>'}</section></div>`;
     }
-    layout(`<div class="eyebrow">APP ADMIN / ${h(view)}</div><h1>Administration</h1><nav class="admin-nav" aria-label="Administration sections">${["Plans","Content library", ...(capabilities.rawBrowser ? ["Raw storage"] : [])].map(v=>`<button class="quiet ${v===view?'selected':''}" data-view="${v}" ${v===view?'aria-current="page"':''}>${v}</button>`).join("")}</nav><section class="admin-workspace">${content}</section>`);
+    layout(`<div class="eyebrow">APP ADMIN / ${h(view)}</div><h1>Administration</h1><nav class="admin-nav" aria-label="Administration sections">${["Plans","Content library","Information types", ...(capabilities.rawBrowser ? ["Raw storage"] : [])].map(v=>`<button class="quiet ${v===view?'selected':''}" data-view="${v}" ${v===view?'aria-current="page"':''}>${v}</button>`).join("")}</nav><section class="admin-workspace">${content}</section>`);
     const bind = (id: string, fn: () => Promise<any>) => { const b=document.getElementById(id); if(b)b.onclick=()=>run(fn); };
     const form = (id: string, fn: () => Promise<any>) => { const f=document.getElementById(id); if(f)f.onsubmit=e=>{e.preventDefault();run(fn);}; };
     const value = (id: string) => (document.getElementById(id) as HTMLInputElement).value.trim();
     document.querySelectorAll<HTMLButtonElement>("[data-view]").forEach(b=>b.onclick=()=>run(()=>selectView(b.dataset.view!)));
+    form("information-type-form", async () => {
+      const entry = { name: value("information-name"), description: value("information-description"),
+        active: (document.getElementById("information-active") as HTMLInputElement).checked,
+        ...Object.fromEntries(impactAxes.map(axis => [axis, value("information-" + axis)])) };
+      informationTypes = await api("admin/information-types" + (editingInformationType ? "/" + editingInformationType.id : ""), editingInformationType ? "PUT" : "POST", { version: informationTypes.version, entry });
+      editingInformationType = undefined; render(); notice("Information type saved. Available for new selections in system characteristics.");
+    });
+    bind("information-cancel", async () => { editingInformationType = undefined; render(); });
+    bind("information-reload", async () => {
+      if (!confirm("Reload the catalogue and discard unsaved information type edits?")) return;
+      await selectView("Information types");
+    });
+    document.querySelectorAll<HTMLButtonElement>("[data-edit-information-type]").forEach(button => button.onclick = () => {
+      editingInformationType = informationTypes.entries.find(entry => entry.id === button.dataset.editInformationType); render();
+      document.querySelector<HTMLInputElement>("#information-name")?.focus();
+    });
     form("plan-filter",async()=>{planQuery=value("plan-query");state=value("plan-state");planPages=[undefined];await loadPlans();render();});
     form("library-filter",async()=>{libraryQuery=value("library-query");model=value("library-model");libraryPage=0;render();});
     form("partition-filter",async()=>{partitionQuery=value("partition-query");partitionPages=[undefined];await loadPartitions();render();});

@@ -1,3 +1,4 @@
+import { applyInformationSelection, toOscalInformationType } from "../shared/information-types";
 import { safePolicy, type SecurityPolicy, requestLimit } from "./security";
 import { copyUploadedSsp } from "../shared/ssp-import";
 import type { Directory } from "./directory";
@@ -84,6 +85,11 @@ export class Service {
       if (!this.admin) throw new ApiError(503, "Administration storage is unavailable");
       return new AdminService(this.repo, this.admin, this.policy).request(user, method, p.slice(1), body);
     }
+    if (p[0] === "information-types" && p.length === 1 && method === "GET") {
+      if (!this.admin) throw new ApiError(503, "Information type storage is unavailable");
+      const { entries, version } = await this.admin.informationTypes(user.tid);
+      return { entries, version };
+    }
     if (p[0] === "me" && method === "GET") return user;
     if (p[0] === "content" && method === "GET") {
       const release = p[1]
@@ -151,6 +157,11 @@ export class Service {
       if (!profile) throw new ApiError(400, "Approved profile required");
       const oscal = createSsp(body.systemName.trim(), profile, release.id),
         now = new Date().toISOString();
+      if (this.admin) {
+        const initial = (await this.admin.informationTypes(user.tid)).entries.find(entry => entry.active);
+        if (!initial) throw new ApiError(422, "An administrator must make at least one information type available before creating a plan");
+        applyInformationSelection(oscal["system-security-plan"]["system-characteristics"], [toOscalInformationType(initial)]);
+      }
       const s: Ssp = {
         id: "current",
         sspId: oscal["system-security-plan"].uuid,

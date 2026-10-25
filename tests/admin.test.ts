@@ -1,3 +1,4 @@
+import { MemoryAdminStore } from "../src/api/memory-admin";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -7,7 +8,8 @@ import { CosmosRepository } from "../src/api/cosmos";
 import { referenceProblems, references, libraryPath, type AdminStore, type Library } from "../src/api/admin";
 import type { Json, User } from "../src/shared/types";
 
-class MemoryAdmin implements AdminStore {
+class MemoryAdmin extends MemoryAdminStore implements AdminStore {
+  constructor() { super(new MemoryRepository(), { id: "release" } as any); }
   state: Library = { entries: [], version: 0 };
   docs = new Map<string, Json>();
   events: Json[] = [];
@@ -20,8 +22,8 @@ class MemoryAdmin implements AdminStore {
   async putAsset(id: string, doc: Json) { this.docs.set(id, structuredClone(doc)); }
   async asset(id: string) { return structuredClone(this.docs.get(id)!); }
   async deleteAsset(id: string) { this.docs.delete(id); }
-  async raw() { this.rawCalls++; return { items: [] }; }
-  async partitions() { return { items: ["library"] }; }
+  async raw() { this.rawCalls++; return { items: [], cursor: undefined }; }
+  async partitions() { return { items: ["library"], cursor: undefined }; }
   async audit(event: Json) { this.events.push(event); }
 }
 const admin: User = { oid: "admin", tid: "tenant", roles: ["AppAdmin"] };

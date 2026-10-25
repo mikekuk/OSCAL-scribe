@@ -1,3 +1,4 @@
+import { defaultInformationType, toOscalInformationType } from "./information-types";
 import { flatten } from "./lens/engine.mjs";
 import type { Json, Release, Ssp } from "./types";
 export const roles = [
@@ -31,17 +32,7 @@ export function createSsp(
         description: "Describe the system, its purpose and scope.",
         "security-sensitivity-level": "low",
         "system-information": {
-          "information-types": [
-            {
-              uuid: uuid(),
-              title: "Business information",
-              description:
-                "Replace with the information processed by this system.",
-              "confidentiality-impact": { base: "low" },
-              "integrity-impact": { base: "low" },
-              "availability-impact": { base: "low" },
-            },
-          ],
+          "information-types": [toOscalInformationType(defaultInformationType)],
         },
         "security-impact-level": {
           "security-objective-confidentiality": "low",
