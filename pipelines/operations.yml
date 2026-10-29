@@ -1,25 +1,33 @@
 trigger: none
 pr: none
 parameters:
-- name: action
-  type: string
-  default: stop
-  values: [stop, start, destroy]
-- name: serviceConnection
-  type: string
-  default: ''
 - name: configFile
+  displayName: Environment configuration
   type: string
   default: config/test.json
   values: [config/test.json, config/dev.json]
-- name: environmentName
+- name: action
+  displayName: Operation (destroy requires plan review)
+  type: string
+  default: stop
+  values: [stop, start, destroy]
+- name: variableGroup
+  displayName: Protected variable group override (leave blank for profile default)
   type: string
   default: ''
-- name: variableGroup
+- name: serviceConnection
+  displayName: Infrastructure connection override (leave blank for profile default)
+  type: string
+  default: ''
+- name: environmentName
+  displayName: Approval environment override (leave blank for profile default)
   type: string
   default: ''
 variables:
-- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+- template: templates/profile.yml
+  parameters:
+    configFile: ${{ parameters.configFile }}
+    variableGroup: ${{ parameters.variableGroup }}
 pool: {vmImage: ubuntu-24.04}
 stages:
 - ${{ if ne(parameters.action, 'destroy') }}:
@@ -27,7 +35,7 @@ stages:
     lockBehavior: sequential
     jobs:
     - deployment: Operate
-      environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
+      environment: ${{ coalesce(parameters.environmentName, variables.scribeDeploymentEnvironment) }}
       strategy:
         runOnce:
           deploy:
@@ -79,7 +87,7 @@ stages:
     dependsOn: ConfirmDestroy
     jobs:
     - deployment: Destroy
-      environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
+      environment: ${{ coalesce(parameters.environmentName, variables.scribeDeploymentEnvironment) }}
       timeoutInMinutes: 60
       strategy:
         runOnce:

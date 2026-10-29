@@ -16,7 +16,11 @@
     "test": "node --import tsx --test tests/*.test.ts && node --test tests/lens/*.cjs && node --test tests/pipelines/*.test.mjs",
     "check": "npm test && npm run build",
     "predev": "node scripts/generate-validator.mjs",
-    "security:scan": "bash scripts/ci/security-scan.sh"
+    "security:scan": "bash scripts/ci/security-scan.sh",
+    "config:check": "node scripts/ci/check-config.mjs",
+    "fixtures:prepare": "npm run demo:prepare && npm run content:build",
+    "build:package": "npm run build && node scripts/ci/package.mjs",
+    "test:pipelines": "node --test tests/pipelines/*.test.mjs"
   },
   "dependencies": {
     "@azure/cosmos": "^4.9.0",

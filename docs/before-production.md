@@ -15,7 +15,7 @@ minimum production-policy checks, but these are not the entire production securi
 approval merely by renaming `dev.json` or changing its environment label.
 
 **Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
-This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+This is the original hardening snapshot. Use the exact deployed commit and its corresponding documentation for current review; subsequent pipeline and application changes are not included in that historical snapshot.
 
 ## Review the final system
 

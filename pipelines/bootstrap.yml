@@ -2,18 +2,24 @@
 trigger: none
 pr: none
 parameters:
-- name: serviceConnection
-  type: string
-  default: ''
 - name: configFile
+  displayName: Environment configuration
   type: string
   default: config/test.json
   values: [config/test.json, config/dev.json]
 - name: variableGroup
+  displayName: Protected variable group override (leave blank for profile default)
+  type: string
+  default: ''
+- name: serviceConnection
+  displayName: Infrastructure connection override (leave blank for profile default)
   type: string
   default: ''
 variables:
-- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+- template: templates/profile.yml
+  parameters:
+    configFile: ${{ parameters.configFile }}
+    variableGroup: ${{ parameters.variableGroup }}
 pool: {vmImage: ubuntu-24.04}
 steps:
 - checkout: self

@@ -1,0 +1,40 @@
+# Azure DevOps resolves protected resources before any script can read JSON.
+# Keep their non-secret names here; Azure target/settings remain in config/*.json.
+parameters:
+- name: configFile
+  type: string
+  default: config/test.json
+  values: [config/test.json, config/dev.json]
+- name: variableGroup
+  type: string
+  default: ''
+- name: loadSecrets
+  type: boolean
+  default: true
+variables:
+- ${{ if eq(parameters.configFile, 'config/dev.json') }}:
+  - name: scribeVariableGroup
+    value: oscal-scribe-dev
+  - name: scribeInfrastructureConnection
+    value: oscal-scribe-dev-infrastructure
+  - name: scribeDeploymentConnection
+    value: oscal-scribe-dev-deployment
+  - name: scribePublisherConnection
+    value: oscal-scribe-dev-publisher
+  - name: scribeDeploymentEnvironment
+    value: scribe-dev
+  - name: scribeDataAgentPool
+    value: scribe-dev-agents
+- ${{ else }}:
+  - name: scribeVariableGroup
+    value: oscal-scribe-test
+  - name: scribeInfrastructureConnection
+    value: oscal-scribe-azure
+  - name: scribeDeploymentConnection
+    value: oscal-scribe-azure
+  - name: scribePublisherConnection
+    value: oscal-scribe-azure
+  - name: scribeDeploymentEnvironment
+    value: scribe-test
+- ${{ if eq(parameters.loadSecrets, true) }}:
+  - group: ${{ coalesce(parameters.variableGroup, variables.scribeVariableGroup) }}

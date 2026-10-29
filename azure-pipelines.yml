@@ -5,33 +5,45 @@ trigger:
 pr:
   branches: {include: [main]}
 parameters:
-- name: deploy
-  type: boolean
-  default: false
-- name: serviceConnection
-  type: string
-  default: ''
-- name: deploymentServiceConnection
-  type: string
-  default: ''
-- name: devAgentPool
-  type: string
-  default: scribe-dev-agents
-- name: deployApplication
-  type: boolean
-  default: true
 - name: configFile
+  displayName: Environment configuration
   type: string
   default: config/test.json
   values: [config/test.json, config/dev.json]
-- name: environmentName
+- name: deploy
+  displayName: Deploy to Azure (off = build and test only)
+  type: boolean
+  default: false
+- name: deployApplication
+  displayName: Deploy application after infrastructure
+  type: boolean
+  default: true
+- name: variableGroup
+  displayName: Protected variable group override (leave blank for profile default)
   type: string
   default: ''
-- name: variableGroup
+- name: serviceConnection
+  displayName: Infrastructure connection override (leave blank for profile default)
+  type: string
+  default: ''
+- name: deploymentServiceConnection
+  displayName: Application connection override (leave blank for profile default)
+  type: string
+  default: ''
+- name: environmentName
+  displayName: Approval environment override (leave blank for profile default)
+  type: string
+  default: ''
+- name: devAgentPool
+  displayName: Private agent pool override (leave blank for profile default)
   type: string
   default: ''
 variables:
-- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+- template: pipelines/templates/profile.yml
+  parameters:
+    configFile: ${{ parameters.configFile }}
+    variableGroup: ${{ parameters.variableGroup }}
+    loadSecrets: ${{ parameters.deploy }}
 pool: {vmImage: ubuntu-24.04}
 stages:
 - stage: Build
@@ -43,8 +55,7 @@ stages:
       parameters: {build: true}
     - bash: |
         set -euo pipefail
-        npm run demo:prepare
-        OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+        npm run fixtures:prepare
         npm run check
         npm audit --audit-level=moderate
         bash scripts/ci/security-scan.sh
@@ -108,7 +119,7 @@ stages:
     lockBehavior: sequential
     jobs:
     - deployment: Deploy
-      environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
+      environment: ${{ coalesce(parameters.environmentName, variables.scribeDeploymentEnvironment) }}
       timeoutInMinutes: 60
       strategy:
         runOnce:
@@ -137,10 +148,10 @@ stages:
     - ${{ if eq(parameters.deployApplication, true) }}:
       - deployment: Application
         dependsOn: Deploy
-        environment: ${{ coalesce(parameters.environmentName, iif(eq(parameters.configFile, 'config/dev.json'), 'scribe-dev', 'scribe-test')) }}
+        environment: ${{ coalesce(parameters.environmentName, variables.scribeDeploymentEnvironment) }}
         pool:
           ${{ if eq(parameters.configFile, 'config/dev.json') }}:
-            name: ${{ parameters.devAgentPool }}
+            name: ${{ coalesce(parameters.devAgentPool, variables.scribeDataAgentPool) }}
           ${{ else }}:
             vmImage: ubuntu-24.04
         strategy:

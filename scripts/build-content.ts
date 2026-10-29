@@ -171,8 +171,10 @@ export async function buildContent(
 }
 if (process.argv[1]?.endsWith("build-content.ts")) {
   const input = process.argv[2] || "work/demo-source",
-    cli = process.env.OSCAL_CLI;
-  if (!cli) throw Error("Set OSCAL_CLI to pinned 3.2.0 executable");
+    // The installer has a stable local path; an explicit override still wins.
+    cli = process.env.OSCAL_CLI || resolve('work/oscal-cli/bin/oscal-cli');
+  try { await realpath(cli); }
+  catch { throw Error('OSCAL CLI not found. Run bash scripts/install-oscal-cli.sh or set OSCAL_CLI to the pinned 3.2.0 executable'); }
   const release = await buildContent(input, cli);
   await mkdir("work", { recursive: true });
   await writeFile("work/content-release.json", JSON.stringify(release));

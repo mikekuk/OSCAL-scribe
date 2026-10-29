@@ -10,7 +10,24 @@ Azure Pipelines and **repeat the security review after development in work dev i
 See [work-dev.md](work-dev.md) and the evolving [before-production.md](before-production.md) guide.
 
 **Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
-This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+This is the original hardening snapshot. Use the exact deployed commit and its corresponding documentation for current review; subsequent pipeline and application changes are not included in that historical snapshot.
+
+## Everyday pipeline choices
+
+| Goal | Pipeline | What to select |
+| --- | --- | --- |
+| Build and test | `azure-pipelines.yml` | Keep **Deploy to Azure** off; no Azure setup or secret group required |
+| Build and deploy | `azure-pipelines.yml` on `main` | Select **Environment configuration** and enable **Deploy to Azure** |
+| First dev infrastructure | `azure-pipelines.yml` on `main` | Select `config/dev.json`, enable deployment, disable **Deploy application after infrastructure** |
+| Create the state backend | `pipelines/bootstrap.yml` | Select the same environment profile |
+| Publish approved content | `pipelines/content.yml` | Select the profile and content source; NIST references are the default |
+| Publish the fictional demo | `pipelines/demo.yml` | Use test with `allow_demo: true` |
+| Pause or resume API | `pipelines/operations.yml` | Select the profile and `stop` or `start` |
+
+Leave all name overrides blank for normal runs. Configure names once in
+[`pipelines/templates/profile.yml`](../pipelines/templates/profile.yml) if your organisation uses different conventions.
+Existing pipeline parameter names remain supported for saved runs and callers.
+Deployment stays opt-in; plan approval, identity checks and destruction guards still apply.
 
 ## Choose a profile
 
@@ -25,6 +42,11 @@ The JSON is configuration, not an application password. Keep real company/person
 | `config/test.json` | `oscal-scribe-test` | `oscal-scribe-azure` for all roles by default | `scribe-test` / Microsoft-hosted |
 | `config/dev.json` | `oscal-scribe-dev` | `oscal-scribe-dev-infrastructure`, `oscal-scribe-dev-deployment`, `oscal-scribe-dev-publisher` | `scribe-dev` / `scribe-dev-agents` |
 
+The shared profile template owns these non-secret Azure DevOps names. Azure DevOps must resolve connections,
+environments, pools and variable groups before scripts execute, so those names cannot come from the runtime secret JSON.
+`config/*.json` and protected `scribeEnvironment` own Azure target and application settings. Connection names are
+Azure DevOps labels; object IDs in JSON identify the principals and must still match the authenticated connections.
+
 Names may be overridden with pipeline parameters. Profile selection determines defaults, and the loader refuses a
 protected JSON environment that differs from the selected file. It also checks the actual subscription, tenant and,
 where configured, service-principal object ID before Azure operations. A dev selection cannot silently use test JSON.
@@ -32,6 +54,21 @@ where configured, service-principal object ID before Azure operations. A dev sel
 The main pipeline builds/tests on push and PR. **Deployment defaults to false**. Explicitly select `deploy: true`
 for a cloud run on `main`. A PR never reaches deployment. `deployApplication: false` applies infrastructure only,
 which is useful for the first work-dev network setup. No merge automatically deploys this change to personal Azure.
+
+### Check configuration before a cloud run
+
+For a populated JSON copy kept under ignored `work/`:
+
+```sh
+npm run config:check -- work/my-environment.json
+```
+
+Alternatively, set `SCRIBE_ENVIRONMENT_JSON` privately and run
+`npm run config:check -- config/dev.json` (or `config/test.json`) to validate against that selected profile.
+`SCRIBE_CONFIG` supplies the file when no argument is given; otherwise the default is `config/test.json`.
+The checker makes no Azure calls and prints no configuration values. Public templates intentionally fail until populated.
+Protected JSON replaces the entire template, so keep all explicit work-environment settings when editing it.
+This validates structure and policy; pipeline preflight separately verifies the live account and identity.
 
 ## One-time setup
 
@@ -239,8 +276,7 @@ With Node 22, Java 21 and the documented tools:
 npm ci
 bash scripts/ci/install-terraform.sh
 bash scripts/install-oscal-cli.sh
-npm run demo:prepare
-OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+npm run fixtures:prepare
 npm run check
 npm audit --audit-level=moderate
 bash scripts/ci/security-scan.sh

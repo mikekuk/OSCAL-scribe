@@ -1,6 +1,7 @@
 parameters:
 - name: serviceConnection
   type: string
+  default: ''
 - name: role
   type: string
   default: infrastructure
@@ -23,7 +24,12 @@ steps:
   displayName: ${{ parameters.displayName }}
   inputs:
     workingDirectory: ${{ parameters.workingDirectory }}
-    azureSubscription: ${{ coalesce(parameters.serviceConnection, iif(eq(parameters.configFile, 'config/dev.json'), format('oscal-scribe-dev-{0}', parameters.role), 'oscal-scribe-azure')) }}
+    ${{ if eq(parameters.role, 'infrastructure') }}:
+      azureSubscription: ${{ coalesce(parameters.serviceConnection, variables.scribeInfrastructureConnection) }}
+    ${{ if eq(parameters.role, 'deployment') }}:
+      azureSubscription: ${{ coalesce(parameters.serviceConnection, variables.scribeDeploymentConnection) }}
+    ${{ if eq(parameters.role, 'publisher') }}:
+      azureSubscription: ${{ coalesce(parameters.serviceConnection, variables.scribePublisherConnection) }}
     scriptType: bash
     scriptLocation: inlineScript
     addSpnToEnvironment: true

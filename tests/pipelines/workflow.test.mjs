@@ -25,7 +25,7 @@ test('main builds safely, explicit deployments verify artifacts, PRs are exclude
  assert.match(stages.find(s=>s.stage==='Review').condition,/hasChanges/);
  const deploy=stages.find(s=>s.stage==='Deploy');
  assert.equal(deploy.lockBehavior,'sequential');
- assert.match(deploy.jobs[0].environment,/config\/dev.json/);
+ assert.match(deploy.jobs[0].environment,/variables.scribeDeploymentEnvironment/);
  assert.deepEqual(deploy.dependsOn,['Plan','Review']);
  const steps=deploy.jobs[0].strategy.runOnce.deploy.steps;
  assert.ok(steps.some(s=>s.download==='current' && s.artifact==='application'));
@@ -35,7 +35,7 @@ test('destroy is manually reviewed and demo is an independent opt-in pipeline',(
  const operations=readFileSync('pipelines/operations.yml','utf8');
  assert.match(operations,/ManualValidation@1/);
  assert.match(operations,/dependsOn: ConfirmDestroy/);
- assert.match(operations,/environment:.*scribe-dev/);
+ assert.match(operations,/environment:.*scribeDeploymentEnvironment/);
  const demo=readFileSync('pipelines/demo.yml','utf8');
  assert.match(demo,/trigger: none/);assert.match(demo,/allow_demo/);assert.match(demo,/ALLOW_DEMO_PUBLICATION=true/);
 });
@@ -86,4 +86,32 @@ test('storage provisioning uses ARM while shared keys remain disabled',()=>{
  assert.match(container,/storage_account_id\s*=\s*azurerm_storage_account.packages.id/);
  assert.doesNotMatch(container,/storage_account_name\s*=/);
  assert.doesNotMatch(resources,/^\s*(queue_properties|static_website)\s*\{/m);
+});
+
+test('all pipelines use shared profile defaults and build-only runs do not request secrets', () => {
+ const main = parseDocument(readFileSync('azure-pipelines.yml', 'utf8')).toJS();
+ assert.equal(main.variables[0].parameters.loadSecrets, '${{ parameters.deploy }}');
+ for (const file of files.filter(f => !f.includes('/templates/'))) {
+  const pipeline = parseDocument(readFileSync(file, 'utf8')).toJS();
+  assert.match(pipeline.variables[0].template, /templates\/profile.yml$/);
+  assert.equal(pipeline.parameters.find(p => p.name === 'configFile').default, 'config/test.json');
+ }
+ const profile = parseDocument(readFileSync('pipelines/templates/profile.yml', 'utf8')).toJS();
+ const branches = profile.variables;
+ const dev = Object.values(branches[0])[0];
+ const personal = Object.values(branches[1])[0];
+ const values = entries => Object.fromEntries(entries.map(v => [v.name, v.value]));
+ assert.equal(values(dev).scribeInfrastructureConnection, 'oscal-scribe-dev-infrastructure');
+ assert.equal(values(dev).scribeDeploymentConnection, 'oscal-scribe-dev-deployment');
+ assert.equal(values(dev).scribePublisherConnection, 'oscal-scribe-dev-publisher');
+ assert.equal(values(dev).scribeDeploymentEnvironment, 'scribe-dev');
+ assert.equal(values(dev).scribeDataAgentPool, 'scribe-dev-agents');
+ assert.equal(values(personal).scribeInfrastructureConnection, 'oscal-scribe-azure');
+ assert.equal(values(personal).scribeDeploymentEnvironment, 'scribe-test');
+ assert.match(Object.keys(branches[2])[0], /eq\(parameters.loadSecrets, true\)/);
+ const azure = parseDocument(readFileSync('pipelines/templates/azure-step.yml', 'utf8')).toJS();
+ for (const [role, variable] of [['infrastructure', 'Infrastructure'], ['deployment', 'Deployment'], ['publisher', 'Publisher']]) {
+  const branch = azure.steps[0].inputs[`\${{ if eq(parameters.role, '${role}') }}`];
+  assert.equal(branch.azureSubscription, `\${{ coalesce(parameters.serviceConnection, variables.scribe${variable}Connection) }}`);
+ }
 });

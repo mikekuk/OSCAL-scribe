@@ -14,11 +14,11 @@ Use [deployment.md](deployment.md) for the executable deployment/rebuild sequenc
 No Azure deployment is performed by adding `config/dev.json` to Git.
 
 **Implemented hardening snapshot:** [`b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764`](https://github.com/mikekuk/OSCAL-scribe/commit/b6d212ce9ba8c0cf3ce03f8e7acfc581d3617764).
-This documentation follow-up names the exact code/configuration snapshot; later application changes need renewed review.
+This is the original hardening snapshot. Use the exact deployed commit and its corresponding documentation for current review; subsequent pipeline and application changes are not included in that historical snapshot.
 
 ## What dev.json deploys
 
-Select `configFile: config/dev.json` in the supplied pipelines. It selects work defaults:
+Select **Environment configuration → `config/dev.json`** (`configFile`) in the supplied pipelines. Leave name overrides blank. The shared `pipelines/templates/profile.yml` selects work defaults:
 
 | Item | Default |
 | --- | --- |

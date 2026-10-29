@@ -2,18 +2,24 @@
 trigger: none
 pr: none
 parameters:
-- name: serviceConnection
-  type: string
-  default: ''
 - name: configFile
+  displayName: Environment configuration
   type: string
   default: config/test.json
   values: [config/test.json, config/dev.json]
 - name: variableGroup
+  displayName: Protected variable group override (leave blank for profile default)
+  type: string
+  default: ''
+- name: serviceConnection
+  displayName: Publisher connection override (leave blank for profile default)
   type: string
   default: ''
 variables:
-- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+- template: templates/profile.yml
+  parameters:
+    configFile: ${{ parameters.configFile }}
+    variableGroup: ${{ parameters.variableGroup }}
 pool: {vmImage: ubuntu-24.04}
 steps:
 - checkout: self
@@ -21,8 +27,7 @@ steps:
   parameters: {build: true}
 - bash: |
     set -euo pipefail
-    npm run demo:prepare
-    OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+    npm run fixtures:prepare
   displayName: Build the separate seven-control SOC demo release
 - publish: work/content-release.json
   artifact: demo-release
