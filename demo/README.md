@@ -18,15 +18,14 @@ Publication makes the new release active for new SSPs. Existing SSPs remain pinn
 
 ## Source and resolution
 
-The importer fetches official NIST SP800-53 revision 5.2.0 at commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de`, retaining source URLs/checksums. The original Low and Moderate profiles remain unmodified reference sources in the release; they are not offered as demo profile choices. Cross-references to controls outside the seven-control example remain in the NIST text and can be read in the full source catalog.
+The importer fetches official NIST SP800-53 revision 5.2.0 at commit `78650f02ad9321bb7b817846f8fbd4f2bcd620de`, verifying the committed hashes in `content/reference.json` and retaining source URLs/checksums. Verified cached sources are reused. The original Low and Moderate profiles remain unmodified reference sources in the release; they are not offered as demo profile choices. Cross-references to controls outside the seven-control example remain in the NIST text and can be read in the full source catalog.
 
 The custom profile and SOC component are copied from this directory into ignored `work/demo-source`. Their checksums are recorded alongside upstream provenance. The pinned OSCAL CLI resolves the example and validates the release before publication. All imports are staged locally on the hosted agent; the resolver cannot choose an unapproved remote import.
 
 For optional local development only:
 
 ```sh
-npm run demo:prepare
-OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+npm run fixtures:prepare
 ```
 
 ## Remove demo choices

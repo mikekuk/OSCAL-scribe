@@ -1,17 +1,20 @@
 import {verifyArtifact} from './ci/artifact-integrity.mjs';
+import {assertDeploymentTarget} from './ci/deployment-target.mjs';
 import { loadConfig, assertIdentity } from './ci/config.mjs';
 import { execFileSync } from "node:child_process";
 import { writeFileSync, mkdirSync, readFileSync, rmSync, cpSync } from "node:fs";
 import { createHash } from "node:crypto";
 const run = (cmd, args, options = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", ...options });
-const config = loadConfig(); assertIdentity(config, 'deployment');
-const target = JSON.parse(readFileSync(process.argv[3], 'utf8'));
-if (target.commit !== process.env.BUILD_SOURCEVERSION || target.environment !== config.environment || target.subscription !== config.subscription_id || target.tenant !== config.tenant_id || target.resourceGroup !== config.resource_group_name) throw Error('Deployment artifact targets a different commit or environment');
-const output = target.outputs, v = k => output[k].value;
-if (v('environment') !== config.environment || v('subscription_id') !== config.subscription_id || v('tenant_id') !== config.tenant_id || v('resource_group') !== config.resource_group_name) throw Error('Terraform outputs do not match selected profile');
-const artifact = process.argv[2];
-if (!artifact) throw Error("Pass the downloaded Azure Pipelines application artifact directory");
+const [artifact, targetFile] = process.argv.slice(2);
+if (!artifact || !targetFile) {
+  throw Error('Usage: node scripts/deploy-app.mjs <application-artifact-directory> <deployment-target.json>');
+}
+const config = loadConfig();
+const target = JSON.parse(readFileSync(targetFile, 'utf8'));
+const output = assertDeploymentTarget(target, config, process.env.BUILD_SOURCEVERSION);
+const v = key => output[key].value;
+assertIdentity(config, 'deployment');
 const provenance = JSON.parse(readFileSync(`${artifact}/provenance.json`, "utf8"));
 if (process.env.BUILD_SOURCEVERSION && provenance.commit !== process.env.BUILD_SOURCEVERSION)
   throw Error("Application artifact does not match this pipeline commit");

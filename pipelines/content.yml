@@ -1,27 +1,34 @@
 trigger: none
 pr: none
 parameters:
-- name: serviceConnection
-  type: string
-  default: ''
-- name: devAgentPool
-  type: string
-  default: scribe-dev-agents
 - name: configFile
+  displayName: Environment configuration
   type: string
   default: config/test.json
   values: [config/test.json, config/dev.json]
 - name: contentSource
+  displayName: Content source
   type: string
   default: nist-reference
   values: [nist-reference, controlled-repository]
 - name: contentRepository
+  displayName: Controlled repository (used only for controlled-repository)
   type: string
   default: ControlledOSCAL
 - name: contentRef
+  displayName: Controlled repository branch or tag
   type: string
   default: refs/heads/main
 - name: variableGroup
+  displayName: Protected variable group override (leave blank for profile default)
+  type: string
+  default: ''
+- name: serviceConnection
+  displayName: Publisher connection override (leave blank for profile default)
+  type: string
+  default: ''
+- name: devAgentPool
+  displayName: Private agent pool override (leave blank for profile default)
   type: string
   default: ''
 resources:
@@ -32,10 +39,13 @@ resources:
       name: ${{ parameters.contentRepository }}
       ref: ${{ parameters.contentRef }}
 variables:
-- group: ${{ coalesce(parameters.variableGroup, iif(eq(parameters.configFile, 'config/dev.json'), 'oscal-scribe-dev', 'oscal-scribe-test')) }}
+- template: templates/profile.yml
+  parameters:
+    configFile: ${{ parameters.configFile }}
+    variableGroup: ${{ parameters.variableGroup }}
 pool:
   ${{ if eq(parameters.configFile, 'config/dev.json') }}:
-    name: ${{ parameters.devAgentPool }}
+    name: ${{ coalesce(parameters.devAgentPool, variables.scribeDataAgentPool) }}
   ${{ else }}:
     vmImage: ubuntu-24.04
 steps:
@@ -57,10 +67,10 @@ steps:
     bash scripts/install-oscal-cli.sh
     if [ "$CONTENT_SOURCE" = nist-reference ]; then
       node --import tsx scripts/prepare-reference.ts
-      OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- work/reference-source
+      npm run content:build -- work/reference-source
       git rev-parse HEAD > work/content-source-commit.txt
     else
-      OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- ../controlled
+      npm run content:build -- ../controlled
       git -C ../controlled rev-parse HEAD > work/content-source-commit.txt
     fi
   workingDirectory: $(Pipeline.Workspace)/s/scribe

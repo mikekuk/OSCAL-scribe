@@ -58,3 +58,47 @@ test('work dev config requires explicit identities and denies insecure settings'
  assert.throws(()=>validateConfig({...dev,environment:'prod',allow_destroy:true,protect_data:false}));
  assert.doesNotThrow(()=>validateConfig({...dev,allow_destroy:true,protect_data:false}));
 });
+
+test('missing string settings, null profiles and zero publisher IDs fail clearly', () => {
+  for (const key of ['resource_group_name', 'state_resource_group', 'state_storage_account', 'location', 'web_location', 'prefix']) {
+    assert.throws(() => validateConfig({...config, [key]: undefined}), new RegExp(key));
+  }
+  assert.throws(() => validateConfig({...config, publisher_object_id:'00000000-0000-0000-0000-000000000000'}), /publisher/);
+  const old = process.env.SCRIBE_ENVIRONMENT_JSON;
+  try {
+    for (const value of ['null', '[]', '{"private-value":']) {
+      process.env.SCRIBE_ENVIRONMENT_JSON = value;
+      assert.throws(() => loadConfig('config/test.json'), error => {
+        assert.match(error.message, /scribeEnvironment must/);
+        assert.ok(!error.message.includes('private-value'));
+        return true;
+      });
+    }
+  } finally {
+    if (old === undefined) delete process.env.SCRIBE_ENVIRONMENT_JSON;
+    else process.env.SCRIBE_ENVIRONMENT_JSON = old;
+  }
+});
+
+test('backend settings are separate HCL lines with Entra and OIDC authentication', async () => {
+  const {backendConfig} = await import('../../scripts/ci/config.mjs');
+  const lines = backendConfig(config).trim().split('\n');
+  assert.equal(lines.length, 6);
+  assert.ok(lines.includes('key = "scribe.tfstate"'));
+  assert.ok(lines.includes('use_azuread_auth = true'));
+  assert.ok(lines.includes('use_oidc = true'));
+  assert.ok(!backendConfig(config).includes('\\n'));
+});
+
+test('configuration checker runs offline and reports no private values', async () => {
+  const {spawnSync} = await import('node:child_process');
+  const env = {...process.env, SCRIBE_ENVIRONMENT_JSON:JSON.stringify(config)};
+  const success = spawnSync(process.execPath, ['scripts/ci/check-config.mjs', 'config/test.json'], {env, encoding:'utf8'});
+  assert.equal(success.status, 0, success.stderr);
+  assert.match(success.stdout, /Valid test configuration/);
+  assert.ok(!success.stdout.includes(config.subscription_id));
+  const failure = spawnSync(process.execPath, ['scripts/ci/check-config.mjs', 'config/dev.json'], {env, encoding:'utf8'});
+  assert.equal(failure.status, 1);
+  assert.match(failure.stderr, /does not match/);
+  assert.ok(!failure.stderr.includes(config.subscription_id));
+});

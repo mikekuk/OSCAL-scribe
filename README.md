@@ -11,8 +11,7 @@ Requires Node 22+, Java 21+, curl and unzip.
 ```sh
 npm ci
 bash scripts/install-oscal-cli.sh
-npm run demo:prepare
-OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build
+npm run fixtures:prepare
 npm run demo
 # In another terminal:
 npm run dev
@@ -28,13 +27,16 @@ The separate demo pipeline publishes a seven-control SOC worked example selected
 npm run check
 npm audit --audit-level=moderate
 npm run security:scan
-terraform -chdir=infrastructure init -backend=false -lockfile=readonly
-terraform -chdir=infrastructure validate
+bash scripts/ci/install-terraform.sh
+work/tools/terraform -chdir=infrastructure init -backend=false -lockfile=readonly
+work/tools/terraform -chdir=infrastructure validate
 ```
 
-Prepare the demo content first: OSCAL tests use the real catalogue and profiles. Tests cover object-level authorization, sharing boundaries, immutable revisions, attestation, token verification, malformed input, NIST baseline coverage and inherited Lens import/tailoring/rendering regressions. `npm run build` type-checks and produces the static site plus the Functions entry point.
+Prepare the demo content first: OSCAL tests use the real catalogue and profiles. Tests cover object-level authorization, sharing boundaries, immutable revisions, attestation, token verification, malformed input, NIST baseline coverage and inherited Lens import/tailoring/rendering regressions. `npm run build` type-checks and produces the static site plus the Functions entry point. `npm run build:package` also creates the deployment artifact in `work/application`. The content builder uses the installed CLI in `work/oscal-cli/bin/oscal-cli` by default; set `OSCAL_CLI` only to override it.
 
 ## Deploy from Azure DevOps
+
+Choose **Environment configuration**, then enable **Deploy to Azure** for a deployment. Leave connection, variable-group, approval-environment and agent-pool overrides blank to use the selected profile defaults. Build-only runs need no Azure connection or protected variable group.
 
 Use the [Azure DevOps deployment and rebuild guide](docs/deployment.md). Main merges and pull requests build and verify; cloud deployment requires manually selecting `deploy: true`. Reviewed Terraform plans use central Azure Storage state. The application job deploys the same verified build artifact through a separately scoped identity.
 

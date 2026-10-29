@@ -261,7 +261,7 @@ can change Azure roles/resources. Work dev must establish independent retention/
 
 ## Configuration and CI/CD protections
 
-`config/test.json` and `config/dev.json` are intentionally incomplete templates. Each pipeline selects one; a protected
+`config/test.json` and `config/dev.json` are intentionally incomplete templates. Cloud operations select one; a protected
 Azure DevOps `scribeEnvironment` variable contains the complete effective JSON. The loader rejects unknown keys,
 malformed IDs/settings and an environment label that differs from the selected file. It validates subscription,
 tenant and configured principal against the authenticated service connection before Azure operations. Dev requires
@@ -285,7 +285,7 @@ raw access and permanent deletion, and require 30-day backup/at least 90-day log
 complete production policy. There is no selectable prod pipeline/profile in this change.
 
 Push/PR runs build and verify. Deployment defaults to **false**, requires an explicit main-branch run and excludes PRs.
-The work profile selects separate variable groups, service connections, environment and private-agent defaults.
+The shared `pipelines/templates/profile.yml` selects variable groups, role-specific service connections, approval environments and private-agent defaults. Build-only runs omit the protected variable group entirely. Names may be overridden per run without changing Azure target validation.
 Infrastructure planning uses central state and a saved plan; changed plans require review, and dev always requires
 review even for an unchanged plan. Work manual validation forbids self-approval. Apply compares saved-plan variables
 with the current effective configuration; changed configuration needs a fresh plan/review.

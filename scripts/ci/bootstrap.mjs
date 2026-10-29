@@ -1,7 +1,7 @@
 // One-time cloud bootstrap. No Terraform and no local state are used here.
 import { createHash } from 'node:crypto';
-import { loadConfig, assertAccount, assertIdentity, az } from './config.mjs';
-const c = loadConfig(); assertAccount(c);
+import { loadConfig, assertIdentity, az } from './config.mjs';
+const c = loadConfig();
 const principal = assertIdentity(c, 'infrastructure');
 for (const group of [c.resource_group_name,c.state_resource_group]) {
   if (!az(['group','exists','--name',group])) throw Error(`Create resource group ${group} in the portal first`);

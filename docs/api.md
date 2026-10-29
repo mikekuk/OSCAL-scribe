@@ -19,7 +19,7 @@ Every production endpoint requires `Authorization: Bearer <Entra delegated acces
 | POST | /api/ssps/{uuid}/attest | `{revision,systemRole}`; current saved revision only |
 | POST | /api/ssps/{uuid}/validate | `{oscal?}`; saved document if omitted |
 
-`GET /ssps`, `/ssps/{uuid}/revisions` and `/ssps/{uuid}/attestations` return `{items, cursor?}` with at most 25 items. Pass the opaque `cursor` as a URL-encoded query parameter to continue; a page may be empty while still carrying a cursor. Lists and revisions return metadata, not full OSCAL documents. Fetch a specific revision for its document. Authorization is checked again for every page and revision.
+`GET /api/ssps`, `/api/ssps/{uuid}/revisions` and `/api/ssps/{uuid}/attestations` return `{items, cursor?}` with at most 25 items. Pass the opaque `cursor` as a URL-encoded query parameter to continue; a page may be empty while still carrying a cursor. Lists and revisions return metadata, not full OSCAL documents. Fetch a specific revision for its document. Authorization is checked again for every page and revision.
 
 The Function entry point applies per-process, tenant/user request limits after authentication: 120 total and 10 expensive operations per minute by default, configurable within validated bounds. Writes, raw reads, exports and revision routes consume the expensive allowance. A 429 includes `Retry-After`; these limits reset on process recycle and are not a global quota. Nonempty bodies require JSON content type, oversized requests return 413, and JSON responses are capped at 60 MB. Security telemetry records actor/operation identifiers, never submitted documents.
 
@@ -50,9 +50,9 @@ All `/api/admin` routes require the verified `AppAdmin` app role. Raw browsing/p
 
 Other requests retain their 1 MB limit; only authenticated AppAdmin library uploads get the larger bounded limit. DELETE does not require an `If-Match` header: its body carries the loaded version and the storage layer enforces ETags. Deletion conflicts return 409; invalid schemas/references return 422. There is no raw-edit or published-release-delete endpoint. See [admin/reference semantics](app-admin.md).
 
-Directory endpoints (same delegated Scribe authentication): `POST /ssps/{id}/people` with `{query}` requires sharing administration and returns up to 20 directory people; `POST /ssps/{id}/identities` with `{ids}` requires plan read access and resolves only existing participants (maximum 100 IDs). Sharing continues to accept `{oid, permission}`; read/edit grants now require a fresh target-tenant lookup. See [directory sharing](directory-sharing.md).
+Directory endpoints (same delegated Scribe authentication): `POST /api/ssps/{id}/people` with `{query}` requires sharing administration and returns up to 20 directory people; `POST /api/ssps/{id}/identities` with `{ids}` requires plan read access and resolves only existing participants (maximum 100 IDs). Sharing continues to accept `{oid, permission}`; read/edit grants now require a fresh target-tenant lookup. See [directory sharing](directory-sharing.md).
 
-SSP uploads: `POST /ssps/import/preview` and `POST /ssps/import`, each with `{oscal}`, are available to User, Security and AppAdmin. Preview validates without writing; import creates a new private copy against its original available release/profile. Existing SSPs are never replaced. See [SSP upload](ssp-upload.md) for formats, limits and retained content.
+SSP uploads: `POST /api/ssps/import/preview` and `POST /api/ssps/import`, each with `{oscal}`, are available to User, Security and AppAdmin. Preview validates without writing; import creates a new private copy against its original available release/profile. Existing SSPs are never replaced. See [SSP upload](ssp-upload.md) for formats, limits and retained content.
 
 ### Information type catalogue
 

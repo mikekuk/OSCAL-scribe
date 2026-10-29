@@ -28,8 +28,10 @@ Do not relabel fictional content to bypass the policy. Existing releases remain 
 To build references locally without publishing:
 
 ```sh
+npm ci
+bash scripts/install-oscal-cli.sh
 node --import tsx scripts/prepare-reference.ts
-OSCAL_CLI="$PWD/work/oscal-cli/bin/oscal-cli" npm run content:build -- work/reference-source
+npm run content:build -- work/reference-source
 ```
 
 Company SSPs, credentials and private content do not belong in this public application repository.

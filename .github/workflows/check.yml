@@ -22,10 +22,7 @@ jobs:
       - run: npm audit --audit-level=moderate
       - run: bash scripts/ci/security-scan.sh
       - run: bash scripts/install-oscal-cli.sh
-      - run: npm run demo:prepare
-      - run: npm run content:build
-        env:
-          OSCAL_CLI: ${{ github.workspace }}/work/oscal-cli/bin/oscal-cli
+      - run: npm run fixtures:prepare
       - run: npm run check
       - run: node scripts/ci/package.mjs
       - run: terraform -chdir=infrastructure fmt -check -recursive
